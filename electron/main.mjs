@@ -186,6 +186,8 @@ const normalizeUrl = (baseUrl, requestPath) => {
   return `${cleanBase}${cleanPath}`;
 };
 
+const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
+
 const parseBackendResponse = async (response) => {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
@@ -312,6 +314,9 @@ const sha256File = async (filePath) => {
 };
 
 const downloadToTemp = async (url) => {
+  if (!isHttpUrl(url)) {
+    throw new Error(`Invalid artifact URL for download: ${url}`);
+  }
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download artifact: ${response.status}`);
@@ -320,6 +325,58 @@ const downloadToTemp = async (url) => {
   const tempPath = path.join(os.tmpdir(), `bundle-${Date.now()}-${Math.random().toString(36).slice(2)}.tar.gz`);
   await fs.writeFile(tempPath, data);
   return tempPath;
+};
+
+const resolveArtifactDownloadUrl = async (artifactRef) => {
+  const raw = String(artifactRef || '').trim();
+  if (!raw) {
+    throw new Error('Missing artifact reference');
+  }
+
+  if (isHttpUrl(raw)) {
+    return raw;
+  }
+
+  const result = await requestBackend({
+    method: 'POST',
+    path: '/v1/oss/resolve-artifact-url',
+    body: {
+      artifact: raw,
+      expires_seconds: 900,
+    },
+    withAuth: true,
+  });
+
+  if (!result.ok) {
+    throw new Error(`Resolve artifact URL failed (${result.status})`);
+  }
+
+  const resolved = String(result.data?.artifact_url || '').trim();
+  if (!isHttpUrl(resolved)) {
+    throw new Error('Resolved artifact URL is invalid');
+  }
+  return resolved;
+};
+
+const prefetchDownloadCredentials = async (release) => {
+  try {
+    const scopeIdRaw = String(release?.scope_id || release?.scopeId || '').trim();
+    const bundleType = String(release?.bundle_type || release?.bundleType || '').trim();
+    const version = String(release?.version || '').trim();
+    const prefix = ['bundles', bundleType, scopeIdRaw, version].filter(Boolean).join('/') + '/';
+
+    await requestBackend({
+      method: 'POST',
+      path: '/v1/oss/download-credentials',
+      body: {
+        duration_seconds: 900,
+        allowed_prefixes: [prefix],
+      },
+      withAuth: true,
+    });
+  } catch {
+    // Best-effort prefetch: desktop download can still proceed with public/signed URLs.
+  }
 };
 
 const installBundleRelease = async (release) => {
@@ -343,7 +400,9 @@ const installBundleRelease = async (release) => {
 
   await ensureDir(parentDir);
 
-  const downloadedPath = await downloadToTemp(artifactUrl);
+  await prefetchDownloadCredentials(release);
+  const resolvedArtifactUrl = await resolveArtifactDownloadUrl(artifactUrl);
+  const downloadedPath = await downloadToTemp(resolvedArtifactUrl);
   try {
     if (expectedSha) {
       const actual = await sha256File(downloadedPath);
