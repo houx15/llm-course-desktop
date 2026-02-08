@@ -50,15 +50,30 @@ const setAuthState = async (patch: Partial<{
   return window.tutorApp.setAuth(patch);
 };
 
+const getRememberLogin = async () => {
+  if (!window.tutorApp) {
+    return true;
+  }
+  try {
+    const settings = await window.tutorApp.getSettings();
+    return settings.rememberLogin !== false;
+  } catch {
+    return true;
+  }
+};
+
 const storeTokens = async (payload: {
   accessToken: string;
   refreshToken?: string;
   expiresInSeconds: number;
 }) => {
+  const rememberLogin = await getRememberLogin();
+  const currentAuth = await getAuthState();
+  const nextRefreshToken = rememberLogin ? (payload.refreshToken ?? currentAuth.refreshToken) : '';
   const expiresAt = Date.now() + Math.max(0, payload.expiresInSeconds - 10) * 1000;
   await setAuthState({
     accessToken: payload.accessToken,
-    refreshToken: payload.refreshToken,
+    refreshToken: nextRefreshToken,
     accessTokenExpiresAt: expiresAt,
   });
 };
@@ -145,6 +160,12 @@ export const authService = {
 
   async restoreUserSession(): Promise<User | null> {
     if (!window.tutorApp) {
+      return null;
+    }
+
+    const rememberLogin = await getRememberLogin();
+    if (!rememberLogin) {
+      await window.tutorApp.clearAuth();
       return null;
     }
 

@@ -29,16 +29,16 @@ export const syncQueue = {
 
   async flushProgress() {
     if (!window.tutorApp) {
-      return { queue: 'progress', sent: 0, remaining: 0 };
+      return { queue: 'progress', sent: 0, remaining: 0, deferred: 0, deadLettered: 0 };
     }
-    return window.tutorApp.flushSync({ queue: 'progress', endpoint: '/v1/progress/chapter' });
+    return window.tutorApp.flushSync({ queue: 'progress', endpoint: '/v1/progress/chapter', maxRetries: 5 });
   },
 
   async flushAnalytics() {
     if (!window.tutorApp) {
-      return { queue: 'analytics', sent: 0, remaining: 0 };
+      return { queue: 'analytics', sent: 0, remaining: 0, deferred: 0, deadLettered: 0 };
     }
-    return window.tutorApp.flushSync({ queue: 'analytics', endpoint: '/v1/analytics/events:ingest' });
+    return window.tutorApp.flushSync({ queue: 'analytics', endpoint: '/v1/analytics/events:ingest', maxRetries: 5 });
   },
 
   async flushAll() {

@@ -10,6 +10,8 @@ interface ChapterContent {
   chapter_context: string;
   task_list: string;
   task_completion_principles: string;
+  interaction_protocol?: string;
+  socratic_vs_direct?: string;
 }
 
 const defaultRoadmap = {

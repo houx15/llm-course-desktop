@@ -31,6 +31,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [storageRoot, setStorageRoot] = useState('');
   const [backendBaseUrl, setBackendBaseUrl] = useState('');
   const [sidecarBaseUrl, setSidecarBaseUrl] = useState('');
+  const [rememberLogin, setRememberLogin] = useState(true);
 
   const [activeProviderId, setActiveProviderId] = useState('gemini');
   const [configs, setConfigs] = useState<Record<string, ProviderConfig>>({});
@@ -48,6 +49,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setStorageRoot(settings.storageRoot || '');
       setBackendBaseUrl(settings.backendBaseUrl || '');
       setSidecarBaseUrl(settings.sidecarBaseUrl || '');
+      setRememberLogin(settings.rememberLogin !== false);
       setActiveProviderId(settings.activeProvider || 'gemini');
 
       const mergedConfigs: Record<string, ProviderConfig> = {};
@@ -118,10 +120,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         storageRoot,
         backendBaseUrl,
         sidecarBaseUrl,
+        rememberLogin,
         rememberKeys,
         modelConfigs,
         activeProvider: activeProviderId,
       });
+
+      if (!rememberLogin) {
+        await window.tutorApp.clearAuth();
+      }
 
       onClose();
     } catch (err) {
@@ -213,6 +220,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono text-gray-700"
                   />
                 </div>
+
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input type="checkbox" checked={rememberLogin} onChange={(e) => setRememberLogin(e.target.checked)} />
+                  记住登录状态（保存 refresh token）
+                </label>
               </div>
             )}
 

@@ -142,7 +142,13 @@ declare global {
         data: any;
       }>;
       enqueueSync: (payload: { queue: string; payload: any }) => Promise<{ queued: boolean; size: number }>;
-      flushSync: (payload: { queue: string; endpoint: string }) => Promise<{ queue: string; sent: number; remaining: number }>;
+      flushSync: (payload: { queue: string; endpoint: string; maxRetries?: number }) => Promise<{
+        queue: string;
+        sent: number;
+        remaining: number;
+        deferred?: number;
+        deadLettered?: number;
+      }>;
       checkAppUpdates: (payload: {
         desktop_version: string;
         sidecar_version: string;
@@ -186,6 +192,8 @@ declare global {
         chapter_context: string;
         task_list: string;
         task_completion_principles: string;
+        interaction_protocol?: string;
+        socratic_vs_direct?: string;
       }>;
       startRuntime: (config: {
         pythonPath?: string;
@@ -193,9 +201,16 @@ declare global {
         llmApiKey: string;
         llmModel?: string;
         llmBaseUrl?: string;
-      }) => Promise<{ started: boolean; pid?: number; reason?: string; stderr?: string }>;
+      }) => Promise<{
+        started: boolean;
+        pid?: number;
+        reason?: string;
+        stderr?: string;
+        runtime_source?: string;
+        python_source?: string;
+      }>;
       stopRuntime: () => Promise<{ stopped: boolean }>;
-      runtimeHealth: () => Promise<{ healthy: boolean; status?: number; data?: any; error?: string; stderr?: string }>;
+      runtimeHealth: () => Promise<{ healthy: boolean; status?: number; data?: any; error?: string; stderr?: string; runtime?: any }>;
       createRuntimeSession: (payload: { chapterId: string }) => Promise<{ session_id: string; initial_message?: string }>;
       createCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string }>;
       openCodePath: (filePath: string) => Promise<{ opened: boolean }>;

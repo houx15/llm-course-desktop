@@ -46,13 +46,14 @@ Optional env vars:
 - [x] Remove remaining mock update IPC (`updates:getManifest`) and mock artifacts from runtime path.
 - [x] Remove hardcoded legacy chapter session bootstrap in secondary chat (`components/ChatPanel.tsx`) and bind to active chapter context.
 - [x] Unify sidecar contract between docs and implementation by updating draft docs to the current `/api/session/*` integration + renderer event normalization.
+- [ ] Publish a real `python_runtime` bundle release (with embedded python + sidecar entry) and return it from backend update APIs for packaged clients.
 
 ### P1 (stability/reliability)
 
-- [ ] Implement sync queue backoff scheduler, retry caps, and dead-letter handling.
+- [x] Implement sync queue backoff scheduler, retry caps, and dead-letter handling.
 - [ ] Add required/optional bundle installation policy and retry/resume behavior.
-- [ ] Add sidecar auto-restart policy and explicit user-visible error states.
-- [ ] Fully implement `rememberLogin` behavior in runtime/session restore logic.
+- [x] Add sidecar auto-restart policy and explicit user-visible error states.
+- [x] Fully implement `rememberLogin` behavior in runtime/session restore logic.
 - [ ] Harden secure secret storage fallback strategy when `safeStorage` is unavailable.
 - [ ] Add structured logs for startup/update/session/sync failures.
 
@@ -93,6 +94,6 @@ Desktop status against demo:
 
 - [x] Session API path matches demo (`/api/session/*`).
 - [x] Session `chapter_id` now preserves `course_id/chapter_name` for course-scoped markdown lookup.
-- [ ] Local curriculum IPC (`curriculum:getChapterContent`) still returns only 3 chapter markdowns; expand if this path is used to feed local agent prompts directly.
+- [x] Local curriculum IPC (`curriculum:getChapterContent`) now returns full chapter markdown set (including `interaction_protocol.md`, `socratic_vs_direct.md`).
 - [x] Add sidecar loader fallback for mixed prompt scope (chapter markdown + global agent markdown), matching documented ownership.
-- [ ] Bundle/runtime path handoff is still incomplete for sidecar content roots in bundled production mode.
+- [x] Runtime launch now supports `python_runtime` bundle handoff for python executable + sidecar root in bundled production mode (with local fallback).

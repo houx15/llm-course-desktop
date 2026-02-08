@@ -28,6 +28,8 @@ Key rule: **LLM provider keys are never persisted by backend**. Desktop may pers
    - `chapter_context.md`
    - `task_list.md`
    - `task_completion_principles.md`
+   - `interaction_protocol.md` (chapter-local first, then global app agents fallback)
+   - `socratic_vs_direct.md` (chapter-local first, then global app agents fallback)
 4. Student message streams through CA -> RMA/experts -> MA updates report
 5. Desktop asynchronously syncs progress + analytics to backend
 
@@ -70,7 +72,7 @@ Key rule: **LLM provider keys are never persisted by backend**. Desktop may pers
   - `id`, `user_id`, `course_id`, `chapter_id`, `status(LOCKED|IN_PROGRESS|COMPLETED)`, `last_session_id`, `updated_at`
   - unique index: `(user_id, chapter_id)`
 - `bundle_releases`
-  - `id`, `bundle_type(app_agents|course|chapter|experts)`, `scope_id`, `version`, `manifest_json`, `artifact_url`, `sha256`, `size_bytes`, `is_mandatory`, `created_at`
+  - `id`, `bundle_type(app_agents|experts_shared|chapter|experts|python_runtime)`, `scope_id`, `version`, `manifest_json`, `artifact_url`, `sha256`, `size_bytes`, `is_mandatory`, `created_at`
   - unique index: `(bundle_type, scope_id, version)`
 - `analytics_events`
   - `id`, `user_id`, `course_id`, `chapter_id`, `session_id`, `event_type`, `event_time`, `payload_json`

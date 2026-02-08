@@ -4,6 +4,21 @@
 
 Integrate the Electron desktop app with real backend APIs, real local sidecar sessions/streaming, and real bundle update/install flows while preserving existing UI structure.
 
+## Execution Progress (2026-02-08)
+
+- Completed:
+  - Phase 0.5 contract freeze is implemented in code (sidecar `/api/session/*`, event normalization, DTO mapping, prompt fallback order).
+  - Phase 1/2 foundation is in place (typed IPC, secure stores, backend bridge, auth + course integration).
+  - Core Phase 3/4 path is implemented (backend update checks, release install with checksum, sidecar session + streaming integration).
+  - Runtime launch now supports `python_runtime` bundle handoff (embedded python + sidecar root) with local fallback.
+  - Sidecar stability improvements implemented: health-gated start, auto-restart attempts, runtime diagnostics surfaced to UI.
+  - `rememberLogin` setting is enforced in auth token persistence and session restore.
+  - Local curriculum IPC now exposes full chapter markdown set (`chapter_context`, `task_list`, `task_completion_principles`, `interaction_protocol`, `socratic_vs_direct`).
+- Remaining:
+  - Publish real `python_runtime` bundle artifacts and wire backend update registry to serve them for packaged clients.
+  - Validate packaged sidecar startup end-to-end on macOS/Windows.
+  - Add smoke/failure integration tests and release scripts/checklist.
+
 ## Current Gap Snapshot
 
 - Auth is still local email/password mock (`components/AuthScreen.tsx`, `services/mockApi.ts`).

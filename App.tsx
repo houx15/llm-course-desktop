@@ -35,6 +35,7 @@ const App: React.FC = () => {
   const [chapterRuntimeState, setChapterRuntimeState] = useState<
     Record<string, { dynamicReport: string; roadmapUpdating: boolean; memoUpdating: boolean }>
   >({});
+  const [runtimeNotice, setRuntimeNotice] = useState('');
 
   const parseReportLines = (report: string) =>
     report
@@ -175,9 +176,15 @@ const App: React.FC = () => {
       }
 
       try {
-        await runtimeManager.start();
+        const runtimeResult = await runtimeManager.start();
+        if (!runtimeResult.started) {
+          setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
+        } else {
+          setRuntimeNotice('');
+        }
       } catch (err) {
         console.warn('Runtime start failed:', err);
+        setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
       }
 
       try {
@@ -188,6 +195,31 @@ const App: React.FC = () => {
     };
 
     syncOnLogin();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const flush = async () => {
+      try {
+        await syncQueue.flushAll();
+      } catch (err) {
+        console.warn('Periodic sync flush failed:', err);
+      }
+    };
+
+    const timer = window.setInterval(flush, 30_000);
+    const onOnline = () => {
+      flush();
+    };
+    window.addEventListener('online', onOnline);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('online', onOnline);
+    };
   }, [user]);
 
   const loadCourses = async () => {
@@ -231,6 +263,7 @@ const App: React.FC = () => {
     await authService.logout();
     setUser(null);
     setMyCourses([]);
+    setRuntimeNotice('');
     setView('dashboard');
   };
 
@@ -312,6 +345,11 @@ const App: React.FC = () => {
      return (
         <div className="flex flex-col h-screen bg-gray-50 font-sans text-gray-900">
             <TopBar user={user} onLogout={handleLogout} />
+            {runtimeNotice && (
+              <div className="px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200">
+                本地运行时异常：{runtimeNotice}
+              </div>
+            )}
             <Dashboard 
                 user={user} 
                 courses={myCourses} 
@@ -334,6 +372,11 @@ const App: React.FC = () => {
         onToggleSidebar={view === 'course' && !isCodingMode ? () => setIsSidebarOpen((prev) => !prev) : undefined}
         isSidebarOpen={isSidebarOpen}
       />
+      {runtimeNotice && (
+        <div className="px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200">
+          本地运行时异常：{runtimeNotice}
+        </div>
+      )}
 
       {/* MAIN CONTENT AREA */}
       <div className="flex flex-1 overflow-hidden relative">

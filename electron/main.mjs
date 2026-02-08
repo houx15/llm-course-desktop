@@ -22,6 +22,12 @@ let runtimeProcess = null;
 let mainWindow = null;
 let refreshPromise = null;
 let runtimeStderrBuffer = '';
+let runtimeStartConfig = null;
+let runtimeIntentionalStop = false;
+let runtimeRestartTimer = null;
+let runtimeAutoRestartAttempts = 0;
+const MAX_RUNTIME_AUTO_RESTART = 2;
+let runtimeLaunchInfo = null;
 
 const defaultSettings = () => ({
   storageRoot: app.getPath('userData'),
@@ -306,6 +312,14 @@ const queueFileFor = async (name) => {
   return path.join(dir, `${normalized}.jsonl`);
 };
 
+const deadLetterFileFor = async (name) => {
+  const settings = await loadSettings();
+  const dir = getQueueDir(settings);
+  await ensureDir(dir);
+  const normalized = sanitizeSegment(name || 'default');
+  return path.join(dir, `${normalized}.deadletter.jsonl`);
+};
+
 const sha256File = async (filePath) => {
   const buffer = await fs.readFile(filePath);
   const hash = createHash('sha256');
@@ -458,6 +472,41 @@ const writeQueue = async (name, items) => {
   await fs.writeFile(filePath, text ? `${text}\n` : '', 'utf-8');
 };
 
+const appendDeadLetter = async (name, item, reason, status) => {
+  const filePath = await deadLetterFileFor(name);
+  const record = {
+    id: item?.id || randomUUID(),
+    queuedAt: item?.createdAt || Date.now(),
+    deadLetteredAt: Date.now(),
+    retries: item?.retries || 0,
+    lastErrorStatus: status || null,
+    reason: String(reason || 'unknown'),
+    payload: item?.payload || {},
+  };
+  await fs.appendFile(filePath, `${JSON.stringify(record)}\n`, 'utf-8');
+};
+
+const isRetryableStatus = (status) => {
+  if (!status) {
+    return true;
+  }
+  if (status === 429) {
+    return true;
+  }
+  if (status >= 500) {
+    return true;
+  }
+  return false;
+};
+
+const computeBackoffMs = (retries) => {
+  const baseMs = 1500;
+  const maxMs = 2 * 60 * 1000;
+  const raw = Math.min(baseMs * 2 ** Math.max(0, retries - 1), maxMs);
+  const jitter = Math.floor(Math.random() * 300);
+  return raw + jitter;
+};
+
 const createWindow = async () => {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -513,6 +562,18 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+app.on('before-quit', () => {
+  runtimeIntentionalStop = true;
+  if (runtimeRestartTimer) {
+    clearTimeout(runtimeRestartTimer);
+    runtimeRestartTimer = null;
+  }
+  if (runtimeProcess) {
+    runtimeProcess.kill();
+    runtimeProcess = null;
   }
 });
 
@@ -593,6 +654,7 @@ ipcMain.handle('sync:enqueue', async (_event, payload) => {
     payload: payload?.payload || {},
     retries: 0,
     createdAt: Date.now(),
+    nextAttemptAt: Date.now(),
   });
   await writeQueue(queue, items);
   return { queued: true, size: items.length };
@@ -601,6 +663,7 @@ ipcMain.handle('sync:enqueue', async (_event, payload) => {
 ipcMain.handle('sync:flush', async (_event, payload) => {
   const queue = sanitizeSegment(payload?.queue || 'default');
   const endpoint = String(payload?.endpoint || '');
+  const maxRetries = Math.max(1, Number(payload?.maxRetries || 5));
   if (!endpoint) {
     throw new Error('Missing sync endpoint');
   }
@@ -608,8 +671,18 @@ ipcMain.handle('sync:flush', async (_event, payload) => {
   const items = await readQueue(queue);
   const remaining = [];
   let sent = 0;
+  let deferred = 0;
+  let deadLettered = 0;
+  const now = Date.now();
 
   for (const item of items) {
+    const nextAttemptAt = Number(item?.nextAttemptAt || 0);
+    if (nextAttemptAt > now) {
+      remaining.push(item);
+      deferred += 1;
+      continue;
+    }
+
     let body = item.payload;
     if (queue === 'analytics' && !body?.events) {
       body = { events: [item.payload] };
@@ -619,7 +692,20 @@ ipcMain.handle('sync:flush', async (_event, payload) => {
     if (result.ok) {
       sent += 1;
     } else {
-      remaining.push({ ...item, retries: (item.retries || 0) + 1, lastErrorStatus: result.status });
+      const retries = Number(item?.retries || 0) + 1;
+      const retryable = isRetryableStatus(result.status);
+      const shouldDeadLetter = retries >= maxRetries || !retryable;
+      if (shouldDeadLetter) {
+        deadLettered += 1;
+        await appendDeadLetter(queue, { ...item, retries }, retryable ? 'max retries exceeded' : 'non-retryable status', result.status);
+      } else {
+        remaining.push({
+          ...item,
+          retries,
+          lastErrorStatus: result.status,
+          nextAttemptAt: Date.now() + computeBackoffMs(retries),
+        });
+      }
     }
   }
 
@@ -628,6 +714,8 @@ ipcMain.handle('sync:flush', async (_event, payload) => {
     queue,
     sent,
     remaining: remaining.length,
+    deferred,
+    deadLettered,
   };
 });
 
@@ -751,11 +839,20 @@ ipcMain.handle('curriculum:getChapterContent', async (_event, payload) => {
     const filePath = path.join(chapterRoot, name);
     return fs.readFile(filePath, 'utf-8');
   };
+  const readOptional = async (name) => {
+    try {
+      return await read(name);
+    } catch {
+      return '';
+    }
+  };
 
   return {
     chapter_context: await read('chapter_context.md'),
     task_list: await read('task_list.md'),
     task_completion_principles: await read('task_completion_principles.md'),
+    interaction_protocol: await readOptional('interaction_protocol.md'),
+    socratic_vs_direct: await readOptional('socratic_vs_direct.md'),
   };
 });
 
@@ -775,6 +872,101 @@ const pathExists = async (candidatePath) => {
   } catch {
     return false;
   }
+};
+
+const readJsonIfExists = async (filePath) => {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    return safeJson(raw, null);
+  } catch {
+    return null;
+  }
+};
+
+const getPreferredBundleEntry = (map, preferredScopes = []) => {
+  const entries = Object.entries(map || {}).filter(([, entry]) => entry?.path);
+  if (entries.length === 0) {
+    return null;
+  }
+
+  for (const scope of preferredScopes) {
+    const hit = entries.find(([scopeId]) => String(scopeId).toLowerCase() === String(scope).toLowerCase());
+    if (hit) {
+      return { scopeId: hit[0], entry: hit[1] };
+    }
+  }
+
+  return { scopeId: entries[0][0], entry: entries[0][1] };
+};
+
+const resolvePythonRuntimeBundle = async (indexData) => {
+  const preferred = getPreferredBundleEntry(indexData?.python_runtime, ['core', 'default', 'standard', 'py312']);
+  if (!preferred) {
+    return null;
+  }
+
+  const bundleRoot = String(preferred.entry.path || '').trim();
+  if (!bundleRoot) {
+    return null;
+  }
+
+  const manifestNames = ['runtime.manifest.json', 'bundle.manifest.json', 'manifest.json'];
+  let manifest = null;
+  for (const name of manifestNames) {
+    const candidate = path.join(bundleRoot, name);
+    manifest = await readJsonIfExists(candidate);
+    if (manifest) {
+      break;
+    }
+  }
+
+  const pythonManifestRel =
+    manifest?.python?.executable_relpath || manifest?.python_executable_relpath || manifest?.pythonExecutableRelpath || '';
+  const sidecarManifestRel =
+    manifest?.sidecar?.root_relpath || manifest?.sidecar_root_relpath || manifest?.sidecarRootRelpath || '';
+
+  const pythonCandidates = [
+    pythonManifestRel ? path.join(bundleRoot, pythonManifestRel) : '',
+    path.join(bundleRoot, 'python', 'bin', 'python3'),
+    path.join(bundleRoot, 'python', 'bin', 'python'),
+    path.join(bundleRoot, 'bin', 'python3'),
+    path.join(bundleRoot, 'bin', 'python'),
+    path.join(bundleRoot, 'venv', 'bin', 'python3'),
+    path.join(bundleRoot, 'venv', 'bin', 'python'),
+    path.join(bundleRoot, 'python', 'python.exe'),
+    path.join(bundleRoot, 'python', 'Scripts', 'python.exe'),
+  ].filter(Boolean);
+
+  const sidecarCandidates = [
+    sidecarManifestRel ? path.join(bundleRoot, sidecarManifestRel) : '',
+    path.join(bundleRoot, 'sidecar'),
+    path.join(bundleRoot, 'demo'),
+    path.join(bundleRoot, 'runtime'),
+    bundleRoot,
+  ].filter(Boolean);
+
+  let pythonPath = '';
+  for (const candidate of pythonCandidates) {
+    if (await pathExists(candidate)) {
+      pythonPath = candidate;
+      break;
+    }
+  }
+
+  let runtimeCwd = '';
+  for (const candidate of sidecarCandidates) {
+    if (await pathExists(path.join(candidate, 'app', 'server', 'main.py'))) {
+      runtimeCwd = candidate;
+      break;
+    }
+  }
+
+  return {
+    scopeId: preferred.scopeId,
+    bundleRoot,
+    pythonPath,
+    runtimeCwd,
+  };
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -868,29 +1060,83 @@ const buildSidecarSessionContext = async (chapterId) => {
   };
 };
 
-ipcMain.handle('runtime:start', async (_event, config) => {
+const clearRuntimeRestartTimer = () => {
+  if (runtimeRestartTimer) {
+    clearTimeout(runtimeRestartTimer);
+    runtimeRestartTimer = null;
+  }
+};
+
+const stopRuntimeProcess = (intentional = true) => {
+  runtimeIntentionalStop = intentional;
+  clearRuntimeRestartTimer();
+  if (runtimeProcess) {
+    runtimeProcess.kill();
+    runtimeProcess = null;
+  }
+  if (intentional) {
+    runtimeAutoRestartAttempts = 0;
+  }
+};
+
+const scheduleRuntimeAutoRestart = () => {
+  if (!runtimeStartConfig || runtimeIntentionalStop) {
+    return;
+  }
+  if (runtimeAutoRestartAttempts >= MAX_RUNTIME_AUTO_RESTART) {
+    return;
+  }
+  runtimeAutoRestartAttempts += 1;
+  clearRuntimeRestartTimer();
+  runtimeRestartTimer = setTimeout(() => {
+    startRuntimeInternal(runtimeStartConfig, { isAutoRestart: true }).catch(() => {});
+  }, 1000);
+};
+
+const startRuntimeInternal = async (config, options = {}) => {
+  const runtimeConfig = config || {};
   if (runtimeProcess) {
     const settings = await loadSettings();
     const health = await waitForSidecarHealthy(settings.sidecarBaseUrl, 1200);
     if (health.healthy) {
-      return { started: true, pid: runtimeProcess.pid };
+      return {
+        started: true,
+        pid: runtimeProcess.pid,
+        runtime_source: runtimeLaunchInfo?.runtimeSource || '',
+        python_source: runtimeLaunchInfo?.pythonSource || '',
+      };
     }
-    runtimeProcess.kill();
-    runtimeProcess = null;
+    stopRuntimeProcess(false);
   }
+
+  runtimeIntentionalStop = false;
+  runtimeStartConfig = { ...(runtimeConfig || {}) };
 
   const settings = await loadSettings();
   const tutorRoot = getTutorRoot(settings);
-  const pythonPath = config?.pythonPath || process.env.TUTOR_PYTHON || 'python';
+  const indexData = await loadIndex();
+  const bundledRuntime = await resolvePythonRuntimeBundle(indexData);
+  const runtimeCwd = bundledRuntime?.runtimeCwd || (await resolveRuntimeProjectRoot());
+  const pythonPath = runtimeConfig?.pythonPath || process.env.TUTOR_PYTHON || bundledRuntime?.pythonPath || 'python';
+  const runtimeSource = bundledRuntime?.runtimeCwd ? `python_runtime:${bundledRuntime.scopeId}` : 'local_demo';
+  const pythonSource = runtimeConfig?.pythonPath
+    ? 'explicit'
+    : process.env.TUTOR_PYTHON
+      ? 'env'
+      : bundledRuntime?.pythonPath
+        ? `python_runtime:${bundledRuntime.scopeId}`
+        : 'system_path';
   const curriculumBundle = await resolveBundlePath('curriculum');
   const expertsBundle = await resolveBundlePath('experts');
   const appAgentsBundle = await resolveBundlePath('app_agents');
-  const runtimeCwd = await resolveRuntimeProjectRoot();
 
   if (!runtimeCwd) {
     return {
       started: false,
       reason: 'Cannot locate sidecar runtime root containing app/server/main.py',
+      runtime_source: runtimeSource,
+      python_source: pythonSource,
+      stderr: runtimeStderrBuffer,
     };
   }
 
@@ -898,14 +1144,15 @@ ipcMain.handle('runtime:start', async (_event, config) => {
 
   const env = {
     ...process.env,
-    LLM_PROVIDER: config?.llmProvider || 'custom',
-    LLM_API_KEY: config?.llmApiKey || '',
-    LLM_MODEL: config?.llmModel || '',
-    LLM_BASE_URL: config?.llmBaseUrl || '',
+    LLM_PROVIDER: runtimeConfig?.llmProvider || 'custom',
+    LLM_API_KEY: runtimeConfig?.llmApiKey || '',
+    LLM_MODEL: runtimeConfig?.llmModel || '',
+    LLM_BASE_URL: runtimeConfig?.llmBaseUrl || '',
     CURRICULUM_DIR: curriculumBundle ? path.join(curriculumBundle, 'content', 'curriculum') : '',
     EXPERTS_DIR: expertsBundle ? path.join(expertsBundle, 'experts') : '',
     MAIN_AGENTS_DIR: appAgentsBundle ? path.join(appAgentsBundle, 'content', 'agents') : process.env.MAIN_AGENTS_DIR || '',
     SESSIONS_DIR: getSessionsRoot(settings),
+    PYTHON_RUNTIME_ROOT: bundledRuntime?.bundleRoot || '',
     HOST: '127.0.0.1',
     PORT: '8000',
     TUTOR_ROOT: tutorRoot,
@@ -921,6 +1168,12 @@ ipcMain.handle('runtime:start', async (_event, config) => {
     }
   );
 
+  runtimeLaunchInfo = {
+    runtimeSource,
+    pythonSource,
+    runtimeCwd,
+    pythonPath,
+  };
   runtimeStderrBuffer = '';
   runtimeProcess.stderr?.on('data', (chunk) => {
     const text = chunk?.toString?.() || '';
@@ -929,31 +1182,41 @@ ipcMain.handle('runtime:start', async (_event, config) => {
   });
 
   runtimeProcess.on('exit', () => {
+    const shouldRestart = !runtimeIntentionalStop;
     runtimeProcess = null;
+    if (shouldRestart) {
+      scheduleRuntimeAutoRestart();
+    }
   });
 
   const health = await waitForSidecarHealthy(settings.sidecarBaseUrl, 12000);
   if (!health.healthy) {
-    if (runtimeProcess) {
-      runtimeProcess.kill();
-      runtimeProcess = null;
-    }
+    stopRuntimeProcess(false);
     return {
       started: false,
       reason: `Sidecar health check failed: ${health.error || 'unknown error'}`,
       stderr: runtimeStderrBuffer,
+      runtime_source: runtimeSource,
+      python_source: pythonSource,
     };
   }
 
-  return { started: true, pid: runtimeProcess.pid };
+  clearRuntimeRestartTimer();
+  runtimeAutoRestartAttempts = 0;
+  return {
+    started: true,
+    pid: runtimeProcess.pid,
+    runtime_source: runtimeSource,
+    python_source: pythonSource,
+  };
+};
+
+ipcMain.handle('runtime:start', async (_event, config) => {
+  return startRuntimeInternal(config || {}, { isAutoRestart: false });
 });
 
 ipcMain.handle('runtime:stop', async () => {
-  if (!runtimeProcess) {
-    return { stopped: true };
-  }
-  runtimeProcess.kill();
-  runtimeProcess = null;
+  stopRuntimeProcess(true);
   return { stopped: true };
 });
 
@@ -963,15 +1226,16 @@ ipcMain.handle('runtime:health', async () => {
   try {
     const response = await fetch(`${String(baseUrl).replace(/\/+$/, '')}/health`);
     if (!response.ok) {
-      return { healthy: false, status: response.status };
+      return { healthy: false, status: response.status, runtime: runtimeLaunchInfo };
     }
     const data = await response.json();
-    return { healthy: true, data };
+    return { healthy: true, data, runtime: runtimeLaunchInfo };
   } catch (error) {
     return {
       healthy: false,
       error: error instanceof Error ? error.message : 'health check failed',
       stderr: runtimeStderrBuffer,
+      runtime: runtimeLaunchInfo,
     };
   }
 });
