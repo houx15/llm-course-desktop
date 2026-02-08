@@ -1,0 +1,24 @@
+{
+  "app_version": "0.0.0",
+  "curriculum_updates": [
+    {
+      "id": "curriculum_core",
+      "version": "1.0.0",
+      "src_url": "mock_bundles/curriculum_v1.tar.gz"
+    }
+  ],
+  "agent_updates": [
+    {
+      "id": "agents_core",
+      "version": "1.0.0",
+      "src_url": "mock_bundles/agents_v1.tar.gz"
+    }
+  ],
+  "expert_updates": [
+    {
+      "id": "experts_core",
+      "version": "1.0.0",
+      "src_url": "mock_bundles/experts_v1.tar.gz"
+    }
+  ]
+}
