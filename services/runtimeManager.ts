@@ -11,6 +11,17 @@ type RawStreamEvent = {
   [key: string]: any;
 };
 
+type RuntimePreflightResult = {
+  ok: boolean;
+  phase?: 'health' | 'contract' | 'ready';
+  reason?: string;
+  status?: number;
+  contract_version?: string;
+  contract?: any;
+  stderr?: string;
+  runtime?: any;
+};
+
 export type NormalizedStreamEvent =
   | { type: 'start' }
   | { type: 'companion_chunk'; content: string }
@@ -148,12 +159,39 @@ export const runtimeManager = {
     return window.tutorApp.runtimeHealth();
   },
 
+  async preflight(): Promise<RuntimePreflightResult> {
+    if (!window.tutorApp) {
+      return { ok: false, phase: 'health', reason: 'tutorApp unavailable' };
+    }
+    return window.tutorApp.runtimePreflight();
+  },
+
   async ensureStarted() {
     const health = await this.health();
     if (health.healthy) {
-      return { started: true };
+      const preflight = await this.preflight();
+      if (preflight.ok) {
+        return { started: true };
+      }
+      return {
+        started: false,
+        reason: preflight.reason || `Sidecar preflight failed (${preflight.phase || 'unknown'})`,
+      };
     }
-    return this.start();
+
+    const started = await this.start();
+    if (!started.started) {
+      return started;
+    }
+
+    const preflight = await this.preflight();
+    if (!preflight.ok) {
+      return {
+        started: false,
+        reason: preflight.reason || `Sidecar preflight failed (${preflight.phase || 'unknown'})`,
+      };
+    }
+    return { started: true };
   },
 
   async createSession(chapterId: string) {

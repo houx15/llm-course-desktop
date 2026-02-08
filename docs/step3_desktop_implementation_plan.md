@@ -47,7 +47,7 @@ Integrate the Electron desktop app with real backend APIs, real local sidecar se
 
 - Finalized endpoint table for:
   - backend `/v1/auth|courses|updates|progress|analytics`
-  - sidecar `/api/session/*` + `/health`
+  - sidecar `/api/session/*` + `/health` + `/api/contract` (startup/session preflight)
   - IPC `auth:*`, `settings:*`, `secrets:*`, `backend:*`, `updates:*`, `runtime:*`, `sync:*`
 - Event normalization table:
   - `complete` -> `done`

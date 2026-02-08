@@ -459,7 +459,7 @@ These are local IPC methods, not HTTP:
 - `settings:get`, `settings:set`, `settings:chooseStorageRoot`
 - `secrets:saveLlmKey`, `secrets:getLlmKey`, `secrets:deleteLlmKey`
 - `updates:checkApp`, `updates:checkChapter`, `bundles:install`, `bundles:list`
-- `runtime:start`, `runtime:stop`, `runtime:health`, `runtime:createSession`
+- `runtime:start`, `runtime:stop`, `runtime:health`, `runtime:preflight`, `runtime:createSession`
 - `code:createFile`, `code:openPath`
 - `sync:flushQueue` for offline event/progress upload
 

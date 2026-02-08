@@ -208,9 +208,21 @@ declare global {
         stderr?: string;
         runtime_source?: string;
         python_source?: string;
+        contract_version?: string;
+        contract_status?: number;
       }>;
       stopRuntime: () => Promise<{ stopped: boolean }>;
       runtimeHealth: () => Promise<{ healthy: boolean; status?: number; data?: any; error?: string; stderr?: string; runtime?: any }>;
+      runtimePreflight: () => Promise<{
+        ok: boolean;
+        phase?: 'health' | 'contract' | 'ready';
+        reason?: string;
+        status?: number;
+        contract_version?: string;
+        contract?: any;
+        stderr?: string;
+        runtime?: any;
+      }>;
       createRuntimeSession: (payload: { chapterId: string }) => Promise<{ session_id: string; initial_message?: string }>;
       createCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string }>;
       openCodePath: (filePath: string) => Promise<{ opened: boolean }>;

@@ -38,7 +38,7 @@ Optional env vars:
 
 ### P0 (must finish)
 
-- [ ] Validate sidecar startup in packaged builds (runtime now does health-gated startup with stderr diagnostics; packaged manual verification still needed).
+- [ ] Validate sidecar startup in packaged builds (runtime now does health+contract preflight with stderr diagnostics; packaged manual verification still needed).
 - [x] Add centralized token refresh + retry-on-401 in backend client/request bridge.
 - [x] Bind normalized stream events to roadmap/report UI states (`roadmap_update`, `memo_update`, `done`).
 - [x] Pass resolved chapter/expert bundle paths into sidecar session creation (not only chapter id).
@@ -46,6 +46,7 @@ Optional env vars:
 - [x] Remove remaining mock update IPC (`updates:getManifest`) and mock artifacts from runtime path.
 - [x] Remove hardcoded legacy chapter session bootstrap in secondary chat (`components/ChatPanel.tsx`) and bind to active chapter context.
 - [x] Unify sidecar contract between docs and implementation by updating draft docs to the current `/api/session/*` integration + renderer event normalization.
+- [x] Add startup/session preflight checks against sidecar `/health` + `/api/contract` before session creation.
 - [ ] Publish a real `python_runtime` bundle release (with embedded python + sidecar entry) and return it from backend update APIs for packaged clients.
 
 ### P1 (stability/reliability)

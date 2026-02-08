@@ -971,6 +971,63 @@ const resolvePythonRuntimeBundle = async (indexData) => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const SIDECAR_REQUIRED_CONTRACT_VERSION = 'v1';
+const SIDECAR_REQUIRED_ROUTES = [
+  { method: 'POST', path: '/api/session/new' },
+  { method: 'POST', path: '/api/session/{session_id}/message/stream' },
+  { method: 'GET', path: '/api/session/{session_id}/dynamic_report' },
+  { method: 'POST', path: '/api/session/{session_id}/end' },
+  { method: 'GET', path: '/health' },
+];
+const SIDECAR_REQUIRED_SSE_EVENTS = [
+  'start',
+  'companion_chunk',
+  'companion_complete',
+  'consultation_start',
+  'consultation_complete',
+  'consultation_error',
+  'complete',
+  'error',
+];
+
+const toRouteKey = (method, routePath) => `${String(method || '').toUpperCase()} ${String(routePath || '').trim()}`;
+
+const validateSidecarContract = (payload) => {
+  const contractVersion = String(payload?.contract_version || '').trim();
+  if (contractVersion !== SIDECAR_REQUIRED_CONTRACT_VERSION) {
+    return {
+      ok: false,
+      reason: `Unsupported sidecar contract_version: ${contractVersion || 'missing'} (expected ${SIDECAR_REQUIRED_CONTRACT_VERSION})`,
+    };
+  }
+
+  const routeSet = new Set(
+    (Array.isArray(payload?.routes) ? payload.routes : [])
+      .map((route) => toRouteKey(route?.method, route?.path))
+      .filter(Boolean)
+  );
+  const missingRoutes = SIDECAR_REQUIRED_ROUTES.filter((route) => !routeSet.has(toRouteKey(route.method, route.path)));
+  if (missingRoutes.length > 0) {
+    return {
+      ok: false,
+      reason: `Sidecar contract missing routes: ${missingRoutes.map((route) => toRouteKey(route.method, route.path)).join(', ')}`,
+    };
+  }
+
+  const eventSet = new Set(
+    (Array.isArray(payload?.sse_event_types) ? payload.sse_event_types : []).map((eventType) => String(eventType || '').trim())
+  );
+  const missingEvents = SIDECAR_REQUIRED_SSE_EVENTS.filter((eventType) => !eventSet.has(eventType));
+  if (missingEvents.length > 0) {
+    return {
+      ok: false,
+      reason: `Sidecar contract missing SSE event types: ${missingEvents.join(', ')}`,
+    };
+  }
+
+  return { ok: true };
+};
+
 const waitForSidecarHealthy = async (baseUrl, timeoutMs = 12000) => {
   const start = Date.now();
   let lastError = 'health timeout';
@@ -990,6 +1047,80 @@ const waitForSidecarHealthy = async (baseUrl, timeoutMs = 12000) => {
   }
 
   return { healthy: false, error: lastError };
+};
+
+const checkSidecarContract = async (baseUrl) => {
+  const normalizedBaseUrl = String(baseUrl).replace(/\/+$/, '');
+  let response;
+  try {
+    response = await fetch(`${normalizedBaseUrl}/api/contract`);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : 'contract check failed',
+    };
+  }
+
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      reason: `contract status ${response.status}`,
+      status: response.status,
+      contract: payload,
+    };
+  }
+
+  const validation = validateSidecarContract(payload);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      reason: validation.reason,
+      status: response.status,
+      contract: payload,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    contract: payload,
+  };
+};
+
+const waitForSidecarPreflight = async (baseUrl, timeoutMs = 12000) => {
+  const health = await waitForSidecarHealthy(baseUrl, timeoutMs);
+  if (!health.healthy) {
+    return {
+      ok: false,
+      phase: 'health',
+      reason: health.error || 'health check failed',
+    };
+  }
+
+  const contract = await checkSidecarContract(baseUrl);
+  if (!contract.ok) {
+    return {
+      ok: false,
+      phase: 'contract',
+      reason: contract.reason || 'contract check failed',
+      status: contract.status,
+      contract: contract.contract,
+    };
+  }
+
+  return {
+    ok: true,
+    phase: 'ready',
+    health: health.data,
+    contract: contract.contract,
+  };
 };
 
 const resolveRuntimeProjectRoot = async () => {
@@ -1097,13 +1228,14 @@ const startRuntimeInternal = async (config, options = {}) => {
   const runtimeConfig = config || {};
   if (runtimeProcess) {
     const settings = await loadSettings();
-    const health = await waitForSidecarHealthy(settings.sidecarBaseUrl, 1200);
-    if (health.healthy) {
+    const preflight = await waitForSidecarPreflight(settings.sidecarBaseUrl, 1200);
+    if (preflight.ok) {
       return {
         started: true,
         pid: runtimeProcess.pid,
         runtime_source: runtimeLaunchInfo?.runtimeSource || '',
         python_source: runtimeLaunchInfo?.pythonSource || '',
+        contract_version: preflight.contract?.contract_version || '',
       };
     }
     stopRuntimeProcess(false);
@@ -1189,15 +1321,16 @@ const startRuntimeInternal = async (config, options = {}) => {
     }
   });
 
-  const health = await waitForSidecarHealthy(settings.sidecarBaseUrl, 12000);
-  if (!health.healthy) {
+  const preflight = await waitForSidecarPreflight(settings.sidecarBaseUrl, 12000);
+  if (!preflight.ok) {
     stopRuntimeProcess(false);
     return {
       started: false,
-      reason: `Sidecar health check failed: ${health.error || 'unknown error'}`,
+      reason: `Sidecar preflight failed (${preflight.phase || 'unknown'}): ${preflight.reason || 'unknown error'}`,
       stderr: runtimeStderrBuffer,
       runtime_source: runtimeSource,
       python_source: pythonSource,
+      contract_status: preflight.status,
     };
   }
 
@@ -1208,6 +1341,7 @@ const startRuntimeInternal = async (config, options = {}) => {
     pid: runtimeProcess.pid,
     runtime_source: runtimeSource,
     python_source: pythonSource,
+    contract_version: preflight.contract?.contract_version || '',
   };
 };
 
@@ -1238,6 +1372,29 @@ ipcMain.handle('runtime:health', async () => {
       runtime: runtimeLaunchInfo,
     };
   }
+});
+
+ipcMain.handle('runtime:preflight', async () => {
+  const settings = await loadSettings();
+  const baseUrl = settings.sidecarBaseUrl || 'http://127.0.0.1:8000';
+  const preflight = await waitForSidecarPreflight(baseUrl, 2500);
+  if (preflight.ok) {
+    return {
+      ok: true,
+      contract_version: preflight.contract?.contract_version || '',
+      contract: preflight.contract || null,
+      runtime: runtimeLaunchInfo,
+    };
+  }
+  return {
+    ok: false,
+    phase: preflight.phase,
+    reason: preflight.reason || 'sidecar preflight failed',
+    status: preflight.status,
+    contract: preflight.contract || null,
+    stderr: runtimeStderrBuffer,
+    runtime: runtimeLaunchInfo,
+  };
 });
 
 ipcMain.handle('runtime:createSession', async (_event, payload) => {
