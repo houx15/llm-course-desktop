@@ -12,6 +12,10 @@ export class BackendError extends Error {
   }
 }
 
+const WEB_AUTH_STORAGE_KEY = 'tutor.web.auth.v1';
+const WEB_BACKEND_URL_STORAGE_KEY = 'tutor.web.backend_base_url';
+const DEFAULT_WEB_BACKEND_BASE_URL = (import.meta as any)?.env?.VITE_BACKEND_URL || 'http://47.93.151.131:10723';
+
 const parseErrorMessage = (data: any): { message: string; code?: string } => {
   if (data?.error?.message) {
     return { message: String(data.error.message), code: data.error.code ? String(data.error.code) : undefined };
@@ -28,10 +32,62 @@ const parseErrorMessage = (data: any): { message: string; code?: string } => {
   return { message: 'Request failed' };
 };
 
+const parseResponseBody = async (response: Response) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json().catch(() => ({}));
+  }
+  return response.text().catch(() => '');
+};
+
+const normalizeBaseUrl = (value: string) => String(value || '').replace(/\/+$/, '');
+
+const getWebBackendBaseUrl = () => {
+  try {
+    const fromStorage = window.localStorage.getItem(WEB_BACKEND_URL_STORAGE_KEY) || '';
+    return normalizeBaseUrl(fromStorage || DEFAULT_WEB_BACKEND_BASE_URL);
+  } catch {
+    return normalizeBaseUrl(DEFAULT_WEB_BACKEND_BASE_URL);
+  }
+};
+
+const getWebAccessToken = () => {
+  try {
+    const raw = window.localStorage.getItem(WEB_AUTH_STORAGE_KEY);
+    if (!raw) {
+      return '';
+    }
+    const parsed = JSON.parse(raw);
+    return String(parsed?.accessToken || '');
+  } catch {
+    return '';
+  }
+};
+
 export const backendClient = {
   request: async <T>(method: string, path: string, body?: any, withAuth = true): Promise<T> => {
     if (!window.tutorApp) {
-      throw new Error('tutorApp API unavailable');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (withAuth) {
+        const accessToken = getWebAccessToken();
+        if (accessToken) {
+          headers.Authorization = `Bearer ${accessToken}`;
+        }
+      }
+
+      const response = await fetch(`${getWebBackendBaseUrl()}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) {
+        const { message, code } = parseErrorMessage(data);
+        throw new BackendError(message, response.status, data, code);
+      }
+      return data as T;
     }
 
     const response = await window.tutorApp.backendRequest({

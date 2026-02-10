@@ -30,9 +30,14 @@ The app builds, but it still needs hardening work before being considered stable
 
 Optional env vars:
 
-- `TUTOR_BACKEND_URL` (default: `http://127.0.0.1:10723`)
+- `TUTOR_BACKEND_URL` (default: `http://47.93.151.131:10723`)
 - `TUTOR_SIDECAR_URL` (default: `http://127.0.0.1:8000`)
 - `TUTOR_PYTHON` (default: `python`)
+
+## Auth Flow
+
+- Login: email + password
+- Register: email code + password + display name
 
 ## Remaining TODOs for Stable Runnable App
 

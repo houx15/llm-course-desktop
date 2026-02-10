@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, UserPlus, LogIn, AlertCircle, Mail } from 'lucide-react';
+import { BookOpen, UserPlus, LogIn, AlertCircle, Mail, KeyRound } from 'lucide-react';
 import { authService } from '../services/authService';
 import { User } from '../types';
 
@@ -12,6 +12,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    password: '',
     verificationCode: '',
   });
   const [error, setError] = useState('');
@@ -25,6 +26,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   };
 
   const handleRequestCode = async () => {
+    if (!isRegistering) {
+      return;
+    }
     if (!formData.email) {
       setError('请先填写邮箱');
       return;
@@ -34,8 +38,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     setNotice('');
     setIsSendingCode(true);
     try {
-      const purpose = isRegistering ? 'register' : 'login';
-      const result = await authService.requestEmailCode(formData.email, purpose);
+      const result = await authService.requestEmailCode(formData.email);
       const devHint = result.dev_code ? `（开发环境验证码: ${result.dev_code}）` : '';
       setNotice(`验证码已发送，请在 ${result.expires_in_seconds} 秒内使用。${devHint}`);
     } catch (err) {
@@ -49,14 +52,20 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     e.preventDefault();
     setError('');
 
-    if (!formData.email || !formData.verificationCode) {
-      setError('请填写邮箱和验证码');
+    if (!formData.email || !formData.password) {
+      setError('请填写邮箱和密码');
       return;
     }
 
-    if (isRegistering && !formData.name) {
-      setError('注册需要填写昵称');
-      return;
+    if (isRegistering) {
+      if (!formData.name) {
+        setError('注册需要填写昵称');
+        return;
+      }
+      if (!formData.verificationCode) {
+        setError('注册需要填写邮箱验证码');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -65,11 +74,12 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
         ? await authService.register({
             email: formData.email,
             verificationCode: formData.verificationCode,
+            password: formData.password,
             displayName: formData.name,
           })
         : await authService.login({
             email: formData.email,
-            verificationCode: formData.verificationCode,
+            password: formData.password,
           });
       onLogin(user);
     } catch (err) {
@@ -97,7 +107,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
               setIsRegistering(!isRegistering);
               setError('');
               setNotice('');
-              setFormData({ name: '', email: '', verificationCode: '' });
+              setFormData({ name: '', email: '', password: '', verificationCode: '' });
             }}
             className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
           >
@@ -140,31 +150,51 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                 className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                 placeholder="name@example.com"
               />
-              <button
-                type="button"
-                onClick={handleRequestCode}
-                disabled={isSendingCode}
-                className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
-              >
-                <span className="inline-flex items-center gap-1">
-                  <Mail size={14} />
-                  发送验证码
-                </span>
-              </button>
+              {isRegistering && (
+                <button
+                  type="button"
+                  onClick={handleRequestCode}
+                  disabled={isSendingCode}
+                  className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <Mail size={14} />
+                    发送验证码
+                  </span>
+                </button>
+              )}
             </div>
+            {!isRegistering && <p className="text-[11px] text-gray-500">登录使用邮箱 + 密码。</p>}
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-gray-500 uppercase">验证码</label>
-            <input
-              type="text"
-              name="verificationCode"
-              value={formData.verificationCode}
-              onChange={handleChange}
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              placeholder="输入验证码"
-            />
+            <label className="text-xs font-bold text-gray-500 uppercase">密码</label>
+            <div className="relative">
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                placeholder="至少 8 位"
+              />
+              <KeyRound size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
           </div>
+
+          {isRegistering && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-gray-500 uppercase">邮箱验证码</label>
+              <input
+                type="text"
+                name="verificationCode"
+                value={formData.verificationCode}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                placeholder="输入验证码"
+              />
+            </div>
+          )}
 
           <button
             type="submit"

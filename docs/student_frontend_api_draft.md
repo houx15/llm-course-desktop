@@ -68,6 +68,7 @@ Request
 {
   "email": "student@example.com",
   "verification_code": "123456",
+  "password": "StrongPassword123",
   "display_name": "Alice",
   "device_id": "macbook-air-001"
 }
@@ -90,7 +91,15 @@ Response
 
 ### POST `/v1/auth/login`
 
-Request is the same as register except `purpose` for code should be `login`.
+Request
+
+```json
+{
+  "email": "student@example.com",
+  "password": "StrongPassword123",
+  "device_id": "macbook-air-001"
+}
+```
 
 ### POST `/v1/auth/refresh`
 

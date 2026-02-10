@@ -31,7 +31,7 @@ let runtimeLaunchInfo = null;
 
 const defaultSettings = () => ({
   storageRoot: app.getPath('userData'),
-  backendBaseUrl: process.env.TUTOR_BACKEND_URL || 'http://127.0.0.1:10723',
+  backendBaseUrl: process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723',
   sidecarBaseUrl: process.env.TUTOR_SIDECAR_URL || 'http://127.0.0.1:8000',
   rememberLogin: true,
   rememberKeys: {},
