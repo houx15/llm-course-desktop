@@ -220,22 +220,9 @@ const App: React.FC = () => {
         console.warn('App update check failed:', err);
       }
 
-      // Always show overlay during sidecar ensure+start — ensureReady may need to
-      // download even when an install exists (updates, corruption recovery).
-      // The alreadyInstalled fast-path dismisses quickly without visible flash.
+      // Always show overlay during sidecar setup+start.
+      // runtimeManager.start() handles sidecar readiness checks.
       setShowSidecarDownload(true);
-      try {
-        const sidecarResult = await runtimeManager.ensureSidecarBundle();
-        if (!sidecarResult.ready) {
-          setRuntimeNotice(sidecarResult.error || '学习引擎下载失败');
-          return;
-        }
-      } catch (err) {
-        console.warn('Sidecar ensure failed:', err);
-        setRuntimeNotice(err instanceof Error ? err.message : '学习引擎下载失败');
-        return;
-      }
-
       try {
         const runtimeResult = await runtimeManager.start();
         if (!runtimeResult.started) {
@@ -424,11 +411,6 @@ const App: React.FC = () => {
 
   const handleSidecarRetry = async () => {
     try {
-      const result = await runtimeManager.ensureSidecarBundle();
-      if (!result.ready) {
-        // Stay visible so retry button remains accessible
-        return;
-      }
       const runtimeResult = await runtimeManager.start();
       if (!runtimeResult.started) {
         setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
