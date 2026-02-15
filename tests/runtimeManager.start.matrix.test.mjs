@@ -50,6 +50,20 @@ test("runtimeManager.start classifies sidecar readiness failure", async () => {
   assert.equal(result.reason, "download failed");
 });
 
+test("runtimeManager.start classifies sidecar readiness throw as sidecar failure", async () => {
+  const runtimeManager = await loadRuntimeManager();
+  setTutorApp({
+    ensureSidecarReady: async () => {
+      throw new Error("sidecar network timeout");
+    },
+  });
+
+  const result = await runtimeManager.start();
+  assert.equal(result.started, false);
+  assert.equal(result.failureStage, "sidecar");
+  assert.equal(result.reason, "sidecar network timeout");
+});
+
 test("runtimeManager.start classifies bootstrap failure when API key is missing", async () => {
   const runtimeManager = await loadRuntimeManager();
   let startRuntimeCalled = false;
@@ -68,6 +82,20 @@ test("runtimeManager.start classifies bootstrap failure when API key is missing"
   assert.equal(startRuntimeCalled, false);
 });
 
+test("runtimeManager.start classifies bootstrap throw during bootstrap load", async () => {
+  const runtimeManager = await loadRuntimeManager();
+  setTutorApp({
+    getSettings: async () => {
+      throw new Error("settings unavailable");
+    },
+  });
+
+  const result = await runtimeManager.start();
+  assert.equal(result.started, false);
+  assert.equal(result.failureStage, "bootstrap");
+  assert.equal(result.reason, "settings unavailable");
+});
+
 test("runtimeManager.start classifies runtime process start failure", async () => {
   const runtimeManager = await loadRuntimeManager();
   setTutorApp({
@@ -80,6 +108,20 @@ test("runtimeManager.start classifies runtime process start failure", async () =
   assert.equal(result.reason, "process failed");
 });
 
+test("runtimeManager.start classifies runtime start throw as runtime_start failure", async () => {
+  const runtimeManager = await loadRuntimeManager();
+  setTutorApp({
+    startRuntime: async () => {
+      throw new Error("spawn failed");
+    },
+  });
+
+  const result = await runtimeManager.start();
+  assert.equal(result.started, false);
+  assert.equal(result.failureStage, "runtime_start");
+  assert.equal(result.reason, "spawn failed");
+});
+
 test("runtimeManager.start returns started=true on success", async () => {
   const runtimeManager = await loadRuntimeManager();
   setTutorApp();
@@ -89,4 +131,3 @@ test("runtimeManager.start returns started=true on success", async () => {
   assert.equal(result.failureStage, undefined);
   assert.equal(result.pid, 12345);
 });
-
