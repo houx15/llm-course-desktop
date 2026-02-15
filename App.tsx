@@ -227,14 +227,16 @@ const App: React.FC = () => {
         const runtimeResult = await runtimeManager.start();
         if (!runtimeResult.started) {
           setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
+          // Keep overlay visible so retry button remains accessible
+          return;
         } else {
           setRuntimeNotice('');
+          setShowSidecarDownload(false);
         }
       } catch (err) {
         console.warn('Runtime start failed:', err);
         setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
-      } finally {
-        setShowSidecarDownload(false);
+        // Keep overlay visible so retry button remains accessible
       }
 
       try {
