@@ -220,30 +220,20 @@ const App: React.FC = () => {
         console.warn('App update check failed:', err);
       }
 
-      // Check if sidecar bundle needs downloading
-      let needsSidecarDownload = false;
+      // Always show overlay during sidecar ensure+start — ensureReady may need to
+      // download even when an install exists (updates, corruption recovery).
+      // The alreadyInstalled fast-path dismisses quickly without visible flash.
+      setShowSidecarDownload(true);
       try {
-        if (window.tutorApp?.checkSidecarBundle) {
-          const bundleStatus = await window.tutorApp.checkSidecarBundle();
-          needsSidecarDownload = !bundleStatus.installed;
-        }
-      } catch (err) {
-        console.warn('Sidecar bundle check failed:', err);
-      }
-
-      if (needsSidecarDownload) {
-        setShowSidecarDownload(true);
-        try {
-          const result = await runtimeManager.ensureSidecarBundle();
-          if (!result.ready) {
-            setRuntimeNotice(result.error || '学习引擎下载失败');
-            return;
-          }
-        } catch (err) {
-          console.warn('Sidecar download failed:', err);
-          setRuntimeNotice(err instanceof Error ? err.message : '学习引擎下载失败');
+        const sidecarResult = await runtimeManager.ensureSidecarBundle();
+        if (!sidecarResult.ready) {
+          setRuntimeNotice(sidecarResult.error || '学习引擎下载失败');
           return;
         }
+      } catch (err) {
+        console.warn('Sidecar ensure failed:', err);
+        setRuntimeNotice(err instanceof Error ? err.message : '学习引擎下载失败');
+        return;
       }
 
       try {
@@ -252,11 +242,12 @@ const App: React.FC = () => {
           setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
         } else {
           setRuntimeNotice('');
-          setShowSidecarDownload(false);
         }
       } catch (err) {
         console.warn('Runtime start failed:', err);
         setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
+      } finally {
+        setShowSidecarDownload(false);
       }
 
       try {
@@ -434,16 +425,18 @@ const App: React.FC = () => {
   const handleSidecarRetry = async () => {
     try {
       const result = await runtimeManager.ensureSidecarBundle();
-      if (result.ready) {
-        setShowSidecarDownload(false);
-        setRuntimeNotice('');
-        const runtimeResult = await runtimeManager.start();
-        if (!runtimeResult.started) {
-          setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
-        }
+      if (!result.ready) {
+        return;
+      }
+      setRuntimeNotice('');
+      const runtimeResult = await runtimeManager.start();
+      if (!runtimeResult.started) {
+        setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
       }
     } catch (err) {
       console.warn('Sidecar retry failed:', err);
+    } finally {
+      setShowSidecarDownload(false);
     }
   };
 
@@ -455,10 +448,7 @@ const App: React.FC = () => {
   const currentEditorFile = currentChapterId ? editorActiveFiles[currentChapterId] || '' : '';
 
   const sidecarOverlay = showSidecarDownload ? (
-    <SidecarDownloadProgress
-      onRetry={handleSidecarRetry}
-      onDismiss={() => setShowSidecarDownload(false)}
-    />
+    <SidecarDownloadProgress onRetry={handleSidecarRetry} />
   ) : null;
 
   // Render Auth Screen if not logged in

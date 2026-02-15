@@ -11,7 +11,6 @@ export interface SidecarDownloadState {
 
 interface SidecarDownloadProgressProps {
   onRetry: () => void;
-  onDismiss: () => void;
 }
 
 const formatBytes = (bytes: number) => {
@@ -28,7 +27,7 @@ const phaseLabel: Record<string, string> = {
   error: '出现错误',
 };
 
-const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRetry, onDismiss }) => {
+const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRetry }) => {
   const [state, setState] = useState<SidecarDownloadState>({
     phase: 'checking',
     percent: 0,
@@ -45,12 +44,8 @@ const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRet
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    if (state.phase === 'done') {
-      const timer = setTimeout(onDismiss, 800);
-      return () => clearTimeout(timer);
-    }
-  }, [state.phase, onDismiss]);
+  // No auto-dismiss on 'done' — parent controls overlay lifetime so it stays
+  // visible until runtime start/health-check completes.
 
   const isError = state.phase === 'error';
   const isDone = state.phase === 'done';

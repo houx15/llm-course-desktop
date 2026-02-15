@@ -841,11 +841,14 @@ ipcMain.handle('sidecar:checkBundle', async () => {
   const indexData = await loadIndex();
   const pythonRuntime = indexData?.python_runtime || {};
   const entries = Object.entries(pythonRuntime).filter(([, entry]) => entry?.path);
-  if (entries.length === 0) {
-    return { installed: false, version: null, scopeId: null };
+
+  for (const [scopeId, entry] of entries) {
+    const bundlePath = String(entry.path || '');
+    if (bundlePath && (await pathExists(bundlePath))) {
+      return { installed: true, version: entry.version, scopeId, path: bundlePath };
+    }
   }
-  const [scopeId, entry] = entries[0];
-  return { installed: true, version: entry.version, scopeId, path: entry.path };
+  return { installed: false, version: null, scopeId: null };
 });
 
 ipcMain.handle('sidecar:ensureReady', async () => {
@@ -854,20 +857,23 @@ ipcMain.handle('sidecar:ensureReady', async () => {
   const entries = Object.entries(pythonRuntime).filter(([, entry]) => entry?.path);
   const platformScopeId = getPlatformScopeId();
 
-  // Validate existing install: path must exist on disk
+  // Validate existing installs: scan all entries, keep first valid one, prune stale
   let existingVersion = '';
-  if (entries.length > 0) {
-    const [scopeId, entry] = entries[0];
+  let pruned = false;
+  for (const [scopeId, entry] of entries) {
     const bundlePath = String(entry.path || '');
-    const exists = bundlePath && (await pathExists(bundlePath));
-    if (exists) {
-      existingVersion = String(entry.version || '');
+    if (bundlePath && (await pathExists(bundlePath))) {
+      if (!existingVersion) {
+        existingVersion = String(entry.version || '');
+      }
     } else {
-      // Stale index entry — remove it so we proceed to download
       delete pythonRuntime[scopeId];
-      indexData.python_runtime = pythonRuntime;
-      await saveIndex(indexData);
+      pruned = true;
     }
+  }
+  if (pruned) {
+    indexData.python_runtime = pythonRuntime;
+    await saveIndex(indexData);
   }
 
   const sendProgress = (phase, progress) => {
