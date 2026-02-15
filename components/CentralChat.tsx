@@ -1,24 +1,42 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Message, Chapter } from '../types';
 import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManager';
-import { Bot, User, SendHorizontal, Loader2, Paperclip, Terminal } from 'lucide-react';
+import { Bot, User, SendHorizontal, Loader2, Paperclip, Terminal, Code2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
+interface ChatInputInjection {
+  id: number;
+  text: string;
+  send?: boolean;
+  replace?: boolean;
+}
+
 interface CentralChatProps {
   chapter: Chapter;
   onStartCoding?: () => void;
   onRuntimeEvent?: (event: NormalizedStreamEvent) => void;
+  onOpenInEditor?: (payload: { code: string; language?: string }) => void;
+  injectedInput?: ChatInputInjection | null;
+  onInjectedHandled?: (injectionId: number) => void;
 }
 
-const CentralChat: React.FC<CentralChatProps> = ({ chapter, onStartCoding, onRuntimeEvent }) => {
+const CentralChat: React.FC<CentralChatProps> = ({
+  chapter,
+  onStartCoding,
+  onRuntimeEvent,
+  onOpenInEditor,
+  injectedInput,
+  onInjectedHandled,
+}) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const handledInjectionIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,16 +83,17 @@ const CentralChat: React.FC<CentralChatProps> = ({ chapter, onStartCoding, onRun
     });
   };
 
-  const handleSend = async () => {
-    if (!inputValue.trim() || !sessionId || isLoading) return;
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || !sessionId || isLoading) {
+      return false;
+    }
 
     const userMsg: Message = {
       role: 'user',
-      text: inputValue,
+      text,
     };
 
     setMessages((prev) => [...prev, userMsg, { role: 'model', text: '' }]);
-    setInputValue('');
     setIsLoading(true);
 
     try {
@@ -87,10 +106,54 @@ const CentralChat: React.FC<CentralChatProps> = ({ chapter, onStartCoding, onRun
           appendToLatestModelMessage(`\n\n[错误] ${event.message}`);
         }
       });
+      return true;
     } catch (error) {
       appendToLatestModelMessage(`抱歉，遇到了一些错误，请重试。\n\n${error instanceof Error ? error.message : ''}`);
+      return false;
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!injectedInput || !injectedInput.id || handledInjectionIdRef.current === injectedInput.id) {
+      return;
+    }
+    handledInjectionIdRef.current = injectedInput.id;
+
+    const text = String(injectedInput.text || '');
+    if (!text.trim()) {
+      onInjectedHandled?.(injectedInput.id);
+      return;
+    }
+
+    const replace = Boolean(injectedInput.replace);
+    const sendNow = Boolean(injectedInput.send);
+
+    if (sendNow && sessionId && !isLoading) {
+      setInputValue('');
+      sendMessage(text).finally(() => {
+        onInjectedHandled?.(injectedInput.id);
+      });
+      return;
+    }
+
+    setInputValue((prev) => {
+      if (replace || !prev.trim()) {
+        return text;
+      }
+      return `${prev}\n${text}`;
+    });
+    onInjectedHandled?.(injectedInput.id);
+  }, [injectedInput, sessionId, isLoading]);
+
+  const handleSend = async () => {
+    const text = inputValue;
+    if (!text.trim()) return;
+    setInputValue('');
+    const sent = await sendMessage(text);
+    if (!sent) {
+      setInputValue(text);
     }
   };
 
@@ -131,16 +194,34 @@ const CentralChat: React.FC<CentralChatProps> = ({ chapter, onStartCoding, onRun
                         code(props: any) {
                           const { inline, className, children, ...rest } = props;
                           const match = /language-(\w+)/.exec(className || '');
-                          return !inline && match ? (
-                            <SyntaxHighlighter
-                              {...rest}
-                              children={String(children).replace(/\n$/, '')}
-                              style={vs}
-                              language={match[1]}
-                              PreTag="div"
-                              customStyle={{ margin: '1em 0', borderRadius: '0.5rem', fontSize: '0.9em' }}
-                            />
-                          ) : (
+                          const rawCode = String(children).replace(/\n$/, '');
+                          const language = match?.[1] || 'text';
+
+                          if (!inline) {
+                            return (
+                              <div className="relative group/code">
+                                {msg.role === 'model' && onOpenInEditor && (
+                                  <button
+                                    onClick={() => onOpenInEditor({ code: rawCode, language })}
+                                    className="absolute top-2 right-2 z-10 opacity-0 group-hover/code:opacity-100 transition-opacity inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-black/80 text-white hover:bg-black"
+                                  >
+                                    <Code2 size={12} />
+                                    Open in Editor
+                                  </button>
+                                )}
+                                <SyntaxHighlighter
+                                  {...rest}
+                                  children={rawCode}
+                                  style={vs}
+                                  language={language}
+                                  PreTag="div"
+                                  customStyle={{ margin: '1em 0', borderRadius: '0.5rem', fontSize: '0.9em', paddingTop: '2.25rem' }}
+                                />
+                              </div>
+                            );
+                          }
+
+                          return (
                             <code
                               {...rest}
                               className={`${className} bg-gray-100 px-1 py-0.5 rounded font-mono text-pink-600 before:content-[''] after:content-['']`}
@@ -162,7 +243,7 @@ const CentralChat: React.FC<CentralChatProps> = ({ chapter, onStartCoding, onRun
                         className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-all text-sm font-medium w-full sm:w-auto justify-center"
                       >
                         <Terminal size={16} />
-                        开始 Coding！
+                        打开 Code Editor
                       </button>
                     </div>
                   )}

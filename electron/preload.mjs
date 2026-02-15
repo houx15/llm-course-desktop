@@ -39,4 +39,19 @@ contextBridge.exposeInMainWorld('tutorApp', {
 
   createCodeFile: (payload) => ipcRenderer.invoke('code:createFile', payload),
   openCodePath: (filePath) => ipcRenderer.invoke('code:openPath', filePath),
+  readCodeFile: (payload) => ipcRenderer.invoke('code:readFile', payload),
+  writeCodeFile: (payload) => ipcRenderer.invoke('code:writeFile', payload),
+  listCodeFiles: (payload) => ipcRenderer.invoke('code:listFiles', payload),
+  executeCode: (payload) => ipcRenderer.invoke('code:execute', payload),
+  killCodeExecution: (payload) => ipcRenderer.invoke('code:kill', payload),
+  onCodeOutput: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('code:output', listener);
+    return () => ipcRenderer.removeListener('code:output', listener);
+  },
+  onCodeExit: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('code:exit', listener);
+    return () => ipcRenderer.removeListener('code:exit', listener);
+  },
 });
