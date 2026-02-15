@@ -426,6 +426,7 @@ const App: React.FC = () => {
     try {
       const result = await runtimeManager.ensureSidecarBundle();
       if (!result.ready) {
+        // Stay visible so retry button remains accessible
         return;
       }
       setRuntimeNotice('');
@@ -433,10 +434,11 @@ const App: React.FC = () => {
       if (!runtimeResult.started) {
         setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
       }
+      // Only dismiss on success
+      setShowSidecarDownload(false);
     } catch (err) {
       console.warn('Sidecar retry failed:', err);
-    } finally {
-      setShowSidecarDownload(false);
+      // Stay visible so retry button remains accessible
     }
   };
 
