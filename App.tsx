@@ -227,7 +227,10 @@ const App: React.FC = () => {
         const runtimeResult = await runtimeManager.start();
         if (!runtimeResult.started) {
           setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
-          // Keep overlay visible so retry button remains accessible
+          if (runtimeResult.failureStage !== 'sidecar') {
+            setShowSidecarDownload(false);
+          }
+          // Keep overlay visible for sidecar setup/download failures so retry remains accessible
           return;
         } else {
           setRuntimeNotice('');
@@ -236,7 +239,7 @@ const App: React.FC = () => {
       } catch (err) {
         console.warn('Runtime start failed:', err);
         setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
-        // Keep overlay visible so retry button remains accessible
+        setShowSidecarDownload(false);
       }
 
       try {
@@ -416,7 +419,10 @@ const App: React.FC = () => {
       const runtimeResult = await runtimeManager.start();
       if (!runtimeResult.started) {
         setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
-        // Stay visible so retry button remains accessible
+        if (runtimeResult.failureStage !== 'sidecar') {
+          setShowSidecarDownload(false);
+        }
+        // Keep overlay visible for sidecar setup/download failures so retry remains accessible
         return;
       }
       setRuntimeNotice('');
@@ -425,7 +431,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.warn('Sidecar retry failed:', err);
       setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
-      // Stay visible so retry button remains accessible
+      setShowSidecarDownload(false);
     }
   };
 

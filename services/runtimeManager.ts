@@ -132,6 +132,20 @@ export type SidecarSetupStatus =
   | { phase: 'ready' }
   | { phase: 'error'; message: string };
 
+type RuntimeStartFailureStage = 'sidecar' | 'bootstrap' | 'runtime_start';
+
+export type RuntimeStartResult = {
+  started: boolean;
+  pid?: number;
+  reason?: string;
+  stderr?: string;
+  runtime_source?: string;
+  python_source?: string;
+  contract_version?: string;
+  contract_status?: number;
+  failureStage?: RuntimeStartFailureStage;
+};
+
 export const runtimeManager = {
   async ensureSidecarBundle(): Promise<{ ready: boolean; error?: string }> {
     if (!window.tutorApp?.ensureSidecarReady) {
@@ -140,19 +154,41 @@ export const runtimeManager = {
     return window.tutorApp.ensureSidecarReady();
   },
 
-  async start() {
+  async start(): Promise<RuntimeStartResult> {
     if (!window.tutorApp) {
-      return { started: false, reason: 'tutorApp unavailable' };
+      return { started: false, reason: 'tutorApp unavailable', failureStage: 'bootstrap' };
     }
 
-    const sidecar = await this.ensureSidecarBundle();
+    let sidecar: { ready: boolean; error?: string };
+    try {
+      sidecar = await this.ensureSidecarBundle();
+    } catch (err) {
+      return {
+        started: false,
+        reason: err instanceof Error ? err.message : 'Sidecar bundle setup failed',
+        failureStage: 'sidecar',
+      };
+    }
     if (!sidecar.ready) {
-      return { started: false, reason: sidecar.error || 'Sidecar bundle is not ready' };
+      return {
+        started: false,
+        reason: sidecar.error || 'Sidecar bundle is not ready',
+        failureStage: 'sidecar',
+      };
     }
 
-    const boot = await loadRuntimeBootstrap();
+    let boot: Awaited<ReturnType<typeof loadRuntimeBootstrap>>;
+    try {
+      boot = await loadRuntimeBootstrap();
+    } catch (err) {
+      return {
+        started: false,
+        reason: err instanceof Error ? err.message : 'Runtime bootstrap failed',
+        failureStage: 'bootstrap',
+      };
+    }
     if (!boot.apiKey) {
-      return { started: false, reason: 'missing api key' };
+      return { started: false, reason: 'missing api key', failureStage: 'bootstrap' };
     }
 
     const runtimeConfig: RuntimeConfig = {
@@ -162,7 +198,19 @@ export const runtimeManager = {
       llmBaseUrl: boot.providerMeta.baseUrl || undefined,
     };
 
-    return window.tutorApp.startRuntime(runtimeConfig);
+    try {
+      const runtimeResult = await window.tutorApp.startRuntime(runtimeConfig);
+      if (!runtimeResult.started) {
+        return { ...runtimeResult, failureStage: 'runtime_start' };
+      }
+      return runtimeResult;
+    } catch (err) {
+      return {
+        started: false,
+        reason: err instanceof Error ? err.message : 'Runtime start failed',
+        failureStage: 'runtime_start',
+      };
+    }
   },
 
   async stop() {
