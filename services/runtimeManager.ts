@@ -145,6 +145,11 @@ export const runtimeManager = {
       return { started: false, reason: 'tutorApp unavailable' };
     }
 
+    const sidecar = await this.ensureSidecarBundle();
+    if (!sidecar.ready) {
+      return { started: false, reason: sidecar.error || 'Sidecar bundle is not ready' };
+    }
+
     const boot = await loadRuntimeBootstrap();
     if (!boot.apiKey) {
       return { started: false, reason: 'missing api key' };

@@ -429,15 +429,18 @@ const App: React.FC = () => {
         // Stay visible so retry button remains accessible
         return;
       }
-      setRuntimeNotice('');
       const runtimeResult = await runtimeManager.start();
       if (!runtimeResult.started) {
         setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
+        // Stay visible so retry button remains accessible
+        return;
       }
+      setRuntimeNotice('');
       // Only dismiss on success
       setShowSidecarDownload(false);
     } catch (err) {
       console.warn('Sidecar retry failed:', err);
+      setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
       // Stay visible so retry button remains accessible
     }
   };
