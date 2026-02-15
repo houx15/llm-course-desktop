@@ -74,6 +74,26 @@ export interface Message {
   context?: string;
 }
 
+export interface CodeWorkspaceFile {
+  name: string;
+  size: number;
+  modified: number;
+}
+
+export interface CodeExecutionOutputEvent {
+  chapterId: string;
+  stream: 'stdout' | 'stderr';
+  data: string;
+}
+
+export interface CodeExecutionExitEvent {
+  chapterId: string;
+  exitCode: number;
+  signal?: string | null;
+  timedOut?: boolean;
+  killed?: boolean;
+}
+
 export interface CourseSummary {
   id: string;
   title: string;
@@ -226,6 +246,19 @@ declare global {
       createRuntimeSession: (payload: { chapterId: string }) => Promise<{ session_id: string; initial_message?: string }>;
       createCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string }>;
       openCodePath: (filePath: string) => Promise<{ opened: boolean }>;
+      readCodeFile: (payload: { chapterId: string; filename: string }) => Promise<{ content: string; filePath: string }>;
+      writeCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string; bytes: number }>;
+      listCodeFiles: (payload: { chapterId: string }) => Promise<{ files: CodeWorkspaceFile[] }>;
+      executeCode: (payload: {
+        chapterId: string;
+        code: string;
+        filename?: string;
+        env?: Record<string, string>;
+        timeoutMs?: number;
+      }) => Promise<{ started: boolean; pythonPath: string; timeoutMs: number; chapterId: string }>;
+      killCodeExecution: (payload: { chapterId: string }) => Promise<{ killed: boolean; chapterId: string }>;
+      onCodeOutput: (callback: (payload: CodeExecutionOutputEvent) => void) => () => void;
+      onCodeExit: (callback: (payload: CodeExecutionExitEvent) => void) => () => void;
     };
   }
 }

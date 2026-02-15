@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import CentralChat from './components/CentralChat';
 import PhaseView from './components/PhaseView';
 import RoadmapPanel from './components/RoadmapPanel';
 import TopBar from './components/TopBar';
-import CodingSidebar from './components/CodingSidebar';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
+import { CodeEditorPanel } from './components/CodeEditor';
+import { OutputChunk } from './components/CodeEditor';
 import { authService } from './services/authService';
 import { courseService } from './services/courseService';
 import { updateManager } from './services/updateManager';
@@ -29,13 +30,23 @@ const App: React.FC = () => {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [currentPhase, setCurrentPhase] = useState<Phase | null>(null);
   const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null); // Null means showing Phase Overview
-  const [isCodingMode, setIsCodingMode] = useState(false);
+  const [isCodeEditorOpen, setIsCodeEditorOpen] = useState(false);
   const [showResources, setShowResources] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [chapterRuntimeState, setChapterRuntimeState] = useState<
     Record<string, { dynamicReport: string; roadmapUpdating: boolean; memoUpdating: boolean }>
   >({});
   const [runtimeNotice, setRuntimeNotice] = useState('');
+  const [editorWidths, setEditorWidths] = useState<Record<string, number>>({});
+  const [isResizingEditor, setIsResizingEditor] = useState(false);
+  const [chatInjections, setChatInjections] = useState<
+    Record<string, { id: number; text: string; send?: boolean; replace?: boolean } | null>
+  >({});
+  const [codeInjections, setCodeInjections] = useState<Record<string, { id: number; code: string; language?: string } | null>>({});
+  const [editorActiveFiles, setEditorActiveFiles] = useState<Record<string, string>>({});
+  const [editorOutputs, setEditorOutputs] = useState<Record<string, OutputChunk[]>>({});
+  const editorHostRef = useRef<HTMLDivElement>(null);
+  const eventCounterRef = useRef(1);
 
   const parseReportLines = (report: string) =>
     report
@@ -147,6 +158,38 @@ const App: React.FC = () => {
     }
   };
 
+  const nextEventId = () => {
+    const next = eventCounterRef.current;
+    eventCounterRef.current += 1;
+    return next;
+  };
+
+  useEffect(() => {
+    if (!isResizingEditor || !currentChapter) {
+      return;
+    }
+
+    const onMouseMove = (event: MouseEvent) => {
+      const host = editorHostRef.current;
+      if (!host) return;
+      const rect = host.getBoundingClientRect();
+      const desired = rect.right - event.clientX;
+      const nextWidth = Math.max(320, Math.min(rect.width - 380, desired));
+      setEditorWidths((prev) => ({ ...prev, [currentChapter.id]: nextWidth }));
+    };
+
+    const onMouseUp = () => {
+      setIsResizingEditor(false);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isResizingEditor, currentChapter?.id]);
+
   // Check login status & load courses on mount
   useEffect(() => {
     const init = async () => {
@@ -241,6 +284,10 @@ const App: React.FC = () => {
   };
 
   const handleSelectCourse = async (courseId: string) => {
+      const previousChapterId = currentChapter?.id || '';
+      if (previousChapterId) {
+        codeWorkspace.kill(previousChapterId).catch(() => {});
+      }
       setActiveCourseId(courseId);
       setView('course');
       // Reset course internal navigation
@@ -249,7 +296,7 @@ const App: React.FC = () => {
       setChapterRuntimeState({});
       setCurrentPhase(loadedPhases[0] || null);
       setCurrentChapter(null);
-      setIsCodingMode(false);
+      setIsCodeEditorOpen(false);
       setIsSidebarOpen(true);
   };
 
@@ -268,12 +315,19 @@ const App: React.FC = () => {
   };
 
   const handleSelectPhase = (phase: Phase) => {
+    if (currentChapter?.id) {
+      codeWorkspace.kill(currentChapter.id).catch(() => {});
+    }
     setCurrentPhase(phase);
     setCurrentChapter(null);
-    setIsCodingMode(false);
+    setIsCodeEditorOpen(false);
   };
 
   const handleSelectChapter = async (chapter: Chapter, phase: Phase) => {
+    const previousChapterId = currentChapter?.id || '';
+    if (previousChapterId && previousChapterId !== chapter.id) {
+      codeWorkspace.kill(previousChapterId).catch(() => {});
+    }
     const chapterCode = chapter.id.includes('/') ? chapter.id.split('/').pop() || chapter.id : chapter.id;
     const courseId = activeCourseId || phase.id;
     try {
@@ -287,7 +341,7 @@ const App: React.FC = () => {
       ...prev,
       [chapter.id]: prev[chapter.id] || { dynamicReport: '', roadmapUpdating: false, memoUpdating: false },
     }));
-    setIsCodingMode(false);
+    setIsCodeEditorOpen(false);
 
     try {
       await syncQueue.enqueueProgress({
@@ -320,20 +374,40 @@ const App: React.FC = () => {
     }
   };
 
-  const enterCodingMode = () => setIsCodingMode(true);
-  const exitCodingMode = () => setIsCodingMode(false);
-
-  const handleOpenLocalCode = async () => {
-    if (!currentChapter) {
-      return;
-    }
-    try {
-      const result = await codeWorkspace.ensureChapterScript(currentChapter);
-      await codeWorkspace.openPath(result.filePath);
-    } catch (err) {
-      console.warn('Failed to open local code file:', err);
-    }
+  const openCodeEditor = () => {
+    setIsCodeEditorOpen(true);
   };
+
+  const pushChatInjection = (chapterId: string, text: string, send = false, replace = false) => {
+    setChatInjections((prev) => ({
+      ...prev,
+      [chapterId]: {
+        id: nextEventId(),
+        text,
+        send,
+        replace,
+      },
+    }));
+  };
+
+  const handleOpenCodeFromChat = (chapterId: string, payload: { code: string; language?: string }) => {
+    setIsCodeEditorOpen(true);
+    setCodeInjections((prev) => ({
+      ...prev,
+      [chapterId]: {
+        id: nextEventId(),
+        code: payload.code,
+        language: payload.language,
+      },
+    }));
+  };
+
+  const currentChapterId = currentChapter?.id || '';
+  const editorWidth = currentChapter ? editorWidths[currentChapter.id] || 520 : 520;
+  const currentChatInjection = currentChapterId ? chatInjections[currentChapterId] || null : null;
+  const currentCodeInjection = currentChapterId ? codeInjections[currentChapterId] || null : null;
+  const currentEditorOutput = currentChapterId ? editorOutputs[currentChapterId] || [] : [];
+  const currentEditorFile = currentChapterId ? editorActiveFiles[currentChapterId] || '' : '';
 
   // Render Auth Screen if not logged in
   if (!user) {
@@ -363,13 +437,11 @@ const App: React.FC = () => {
   // Render Course Interface
   return (
     <div className="flex flex-col h-screen bg-white overflow-hidden font-sans text-gray-900">
-      
-      {/* 0. TOP BAR (With Back Action) */}
-      <TopBar 
-        user={user} 
-        onLogout={handleLogout} 
-        onLogoClick={() => setView('dashboard')} 
-        onToggleSidebar={view === 'course' && !isCodingMode ? () => setIsSidebarOpen((prev) => !prev) : undefined}
+      <TopBar
+        user={user}
+        onLogout={handleLogout}
+        onLogoClick={() => setView('dashboard')}
+        onToggleSidebar={view === 'course' ? () => setIsSidebarOpen((prev) => !prev) : undefined}
         isSidebarOpen={isSidebarOpen}
       />
       {runtimeNotice && (
@@ -378,130 +450,155 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* MAIN CONTENT AREA */}
       <div className="flex flex-1 overflow-hidden relative">
-          
-          {/* LAYOUT A: STANDARD COURSE MODE */}
-          {!isCodingMode && (
+        {isSidebarOpen && (
+          <div className="w-[260px] shrink-0 h-full border-r border-gray-200 z-20 bg-gray-50">
+            <Sidebar
+              phases={phases}
+              currentPhaseId={currentPhase?.id || null}
+              currentChapterId={currentChapter?.id || null}
+              onSelectPhase={handleSelectPhase}
+              onSelectChapter={handleSelectChapter}
+            />
+          </div>
+        )}
+
+        <div className="flex-1 flex flex-col min-w-0 bg-white relative">
+          <div ref={editorHostRef} className="flex-1 overflow-hidden relative flex min-w-0">
+            {currentChapter ? (
               <>
-                {/* 1. LEFT SIDEBAR (Phases) */}
-                {isSidebarOpen && (
-                  <div className="w-[260px] shrink-0 h-full border-r border-gray-200 z-20 bg-gray-50">
-                      <Sidebar 
-                      phases={phases}
-                      currentPhaseId={currentPhase?.id || null}
-                      currentChapterId={currentChapter?.id || null}
-                      onSelectPhase={handleSelectPhase}
-                      onSelectChapter={handleSelectChapter}
-                      />
+                <div className="flex-1 min-w-0">
+                  <CentralChat
+                    chapter={currentChapter}
+                    onStartCoding={openCodeEditor}
+                    onRuntimeEvent={(event) => handleChapterRuntimeEvent(currentChapter.id, event)}
+                    onOpenInEditor={(payload) => handleOpenCodeFromChat(currentChapter.id, payload)}
+                    injectedInput={currentChatInjection}
+                    onInjectedHandled={(injectionId) => {
+                      setChatInjections((prev) => {
+                        const current = prev[currentChapter.id];
+                        if (!current || current.id !== injectionId) {
+                          return prev;
+                        }
+                        return { ...prev, [currentChapter.id]: null };
+                      });
+                    }}
+                  />
+                </div>
+
+                {isCodeEditorOpen && (
+                  <div
+                    onMouseDown={() => setIsResizingEditor(true)}
+                    className="w-1 shrink-0 cursor-col-resize bg-gray-100 hover:bg-gray-300 transition-colors"
+                  />
+                )}
+                <div
+                  className="shrink-0 h-full overflow-hidden transition-[width] duration-200"
+                  style={{ width: isCodeEditorOpen ? editorWidth : 0 }}
+                >
+                  <CodeEditorPanel
+                    chapterId={currentChapter.id}
+                    chapterTitle={currentChapter.title}
+                    visible={isCodeEditorOpen}
+                    initialOutputChunks={currentEditorOutput}
+                    initialActiveFile={currentEditorFile}
+                    codeInjection={currentCodeInjection}
+                    onCodeInjectionHandled={(injectionId) => {
+                      setCodeInjections((prev) => {
+                        const current = prev[currentChapter.id];
+                        if (!current || current.id !== injectionId) {
+                          return prev;
+                        }
+                        return { ...prev, [currentChapter.id]: null };
+                      });
+                    }}
+                    onActiveFileChange={(filename) =>
+                      setEditorActiveFiles((prev) => ({
+                        ...prev,
+                        [currentChapter.id]: filename,
+                      }))
+                    }
+                    onOutputChange={(chunks) =>
+                      setEditorOutputs((prev) => ({
+                        ...prev,
+                        [currentChapter.id]: chunks,
+                      }))
+                    }
+                    onSendOutputToChatInput={(message) => {
+                      pushChatInjection(currentChapter.id, `Here is my code output:\n${message}`, false, false);
+                    }}
+                    onSendToTutor={(message) => {
+                      pushChatInjection(currentChapter.id, message, true, true);
+                    }}
+                  />
+                </div>
+              </>
+            ) : currentPhase ? (
+              <div className="h-full overflow-y-auto w-full">
+                <PhaseView phase={currentPhase} onStart={handleStartPhase} />
+              </div>
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400 w-full">正在加载课程内容...</div>
+            )}
+          </div>
+
+          {currentChapter && (
+            <div className="shrink-0 h-14 border-t border-gray-200 bg-white flex items-center justify-between px-6 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
+              <div className="relative">
+                {showResources && (
+                  <div className="absolute bottom-16 left-0 w-64 bg-white border border-gray-200 rounded-xl shadow-xl p-2 animate-in slide-in-from-bottom-2">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase px-3 py-2">本章资源</h4>
+                    <div className="space-y-1">
+                      {currentChapter.resources.length > 0 ? (
+                        currentChapter.resources.map((res, i) => (
+                          <a key={i} href={res.url} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded text-sm text-blue-600">
+                            <Download size={14} /> {res.title}
+                          </a>
+                        ))
+                      ) : (
+                        <div className="p-2 text-sm text-gray-400 italic">暂无资源</div>
+                      )}
+                    </div>
                   </div>
                 )}
+                <button
+                  onClick={() => setShowResources(!showResources)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                >
+                  <Download size={16} /> 本章资源
+                  <ChevronUp size={14} className={`transition-transform ${showResources ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
 
-                {/* 2. CENTER STAGE (Chat or Phase Overview) */}
-                <div className="flex-1 flex flex-col min-w-0 bg-white relative">
-                    <div className="flex-1 overflow-hidden relative">
-                        {currentChapter ? (
-                            <CentralChat
-                              chapter={currentChapter}
-                              onStartCoding={enterCodingMode}
-                              onRuntimeEvent={(event) => handleChapterRuntimeEvent(currentChapter.id, event)}
-                            />
-                        ) : currentPhase ? (
-                            <div className="h-full overflow-y-auto">
-                                <PhaseView phase={currentPhase} onStart={handleStartPhase} />
-                            </div>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                                正在加载课程内容...
-                            </div>
-                        )}
-                    </div>
-
-                    {/* BOTTOM TOOLBAR (Persistent for Chapters) */}
-                    {currentChapter && (
-                        <div className="shrink-0 h-14 border-t border-gray-200 bg-white flex items-center justify-between px-6 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
-                            <div className="relative">
-                                {/* Resources Popover */}
-                                {showResources && (
-                                    <div className="absolute bottom-16 left-0 w-64 bg-white border border-gray-200 rounded-xl shadow-xl p-2 animate-in slide-in-from-bottom-2">
-                                        <h4 className="text-xs font-bold text-gray-500 uppercase px-3 py-2">本章资源</h4>
-                                        <div className="space-y-1">
-                                            {currentChapter.resources.length > 0 ? currentChapter.resources.map((res, i) => (
-                                                <a key={i} href={res.url} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded text-sm text-blue-600">
-                                                    <Download size={14}/> {res.title}
-                                                </a>
-                                            )) : <div className="p-2 text-sm text-gray-400 italic">暂无资源</div>}
-                                        </div>
-                                    </div>
-                                )}
-                                <button 
-                                    onClick={() => setShowResources(!showResources)}
-                                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                                >
-                                    <Download size={16} /> 本章资源
-                                    <ChevronUp size={14} className={`transition-transform ${showResources ? 'rotate-180' : ''}`} />
-                                </button>
-                            </div>
-
-                            <button 
-                                onClick={() => { enterCodingMode(); handleOpenLocalCode(); }}
-                                className="flex items-center gap-2 px-4 py-2 bg-black text-white text-sm font-bold rounded-full hover:bg-gray-800 transition-colors"
-                            >
-                                <Terminal size={16} /> 本章代码（本地）
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                {/* 3. RIGHT SIDEBAR (Roadmap) */}
-                <div className={`w-[280px] shrink-0 border-l border-gray-200 bg-gray-50 transition-transform duration-300 ${currentChapter ? 'translate-x-0' : 'translate-x-full absolute right-0 h-full'}`}>
-                    {currentChapter && (
-                        <RoadmapPanel
-                          chapter={currentChapter}
-                          dynamicReport={chapterRuntimeState[currentChapter.id]?.dynamicReport || ''}
-                          isRoadmapUpdating={chapterRuntimeState[currentChapter.id]?.roadmapUpdating || false}
-                          isMemoUpdating={chapterRuntimeState[currentChapter.id]?.memoUpdating || false}
-                        />
-                    )}
-                </div>
-              </>
+              <button
+                onClick={() => {
+                  setIsResizingEditor(false);
+                  setIsCodeEditorOpen((prev) => !prev);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-full transition-colors ${
+                  isCodeEditorOpen ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-black text-white hover:bg-gray-800'
+                }`}
+              >
+                <Terminal size={16} /> {isCodeEditorOpen ? '隐藏编辑器' : 'Code Editor'}
+              </button>
+            </div>
           )}
+        </div>
 
-          {/* LAYOUT B: CODING MODE (Colab + Sidebar) */}
-          {isCodingMode && currentChapter && (
-              <>
-                 {/* Main Content: Local Workspace */}
-                 <div className="flex-1 bg-gray-50 flex flex-col items-center justify-center text-gray-600">
-                    <div className="flex flex-col items-center gap-4 text-center max-w-md px-6">
-                        <Terminal size={56} className="text-gray-400" />
-                        <div>
-                          <h3 className="text-lg font-bold text-gray-800">本地代码环境</h3>
-                          <p className="text-sm text-gray-500 mt-2">
-                            已为本章创建本地 .py 文件。点击下方按钮打开并开始编写代码。
-                          </p>
-                        </div>
-                        <button
-                          onClick={handleOpenLocalCode}
-                          className="px-4 py-2 bg-black text-white text-sm font-semibold rounded-full hover:bg-gray-800"
-                        >
-                          打开本地代码文件
-                        </button>
-                    </div>
-                 </div>
-
-                 {/* Right Sidebar: Chat & Roadmap Tabs */}
-                 <div className="w-[350px] shrink-0 h-full z-30">
-                    <CodingSidebar
-                      chapter={currentChapter}
-                      onExit={exitCodingMode}
-                      onRuntimeEvent={(event) => handleChapterRuntimeEvent(currentChapter.id, event)}
-                      dynamicReport={chapterRuntimeState[currentChapter.id]?.dynamicReport || ''}
-                      isRoadmapUpdating={chapterRuntimeState[currentChapter.id]?.roadmapUpdating || false}
-                      isMemoUpdating={chapterRuntimeState[currentChapter.id]?.memoUpdating || false}
-                    />
-                 </div>
-              </>
+        <div
+          className={`w-[280px] shrink-0 border-l border-gray-200 bg-gray-50 transition-transform duration-300 ${
+            currentChapter ? 'translate-x-0' : 'translate-x-full absolute right-0 h-full'
+          }`}
+        >
+          {currentChapter && (
+            <RoadmapPanel
+              chapter={currentChapter}
+              dynamicReport={chapterRuntimeState[currentChapter.id]?.dynamicReport || ''}
+              isRoadmapUpdating={chapterRuntimeState[currentChapter.id]?.roadmapUpdating || false}
+              isMemoUpdating={chapterRuntimeState[currentChapter.id]?.memoUpdating || false}
+            />
           )}
+        </div>
       </div>
     </div>
   );

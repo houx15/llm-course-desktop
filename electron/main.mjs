@@ -29,6 +29,8 @@ let runtimeRestartTimer = null;
 let runtimeAutoRestartAttempts = 0;
 const MAX_RUNTIME_AUTO_RESTART = 2;
 let runtimeLaunchInfo = null;
+const codeExecutionByChapter = new Map();
+const DEFAULT_CODE_TIMEOUT_MS = 60_000;
 
 const defaultSettings = () => ({
   storageRoot: app.getPath('userData'),
@@ -179,6 +181,41 @@ const assertInside = (root, targetPath) => {
     return resolvedTarget;
   }
   throw new Error('Path is outside allowed root');
+};
+
+const normalizeWorkspaceRelativePath = (rawPath) => {
+  const value = String(rawPath || '').trim();
+  if (!value) {
+    throw new Error('Missing filename');
+  }
+  if (path.isAbsolute(value)) {
+    throw new Error('Absolute path is not allowed');
+  }
+  const normalized = path.normalize(value);
+  if (normalized.startsWith('..') || normalized.includes(`${path.sep}..${path.sep}`) || normalized === '..') {
+    throw new Error('Path traversal is not allowed');
+  }
+  return normalized;
+};
+
+const splitChapterId = (rawChapterId) => {
+  const chapterId = String(rawChapterId || '').trim();
+  if (!chapterId) {
+    return { chapterId: '', courseId: '', chapterCode: '' };
+  }
+  const parts = chapterId.split('/').filter(Boolean);
+  if (parts.length >= 2) {
+    return {
+      chapterId,
+      courseId: sanitizeSegment(parts[0]),
+      chapterCode: sanitizeSegment(parts[parts.length - 1]),
+    };
+  }
+  return {
+    chapterId,
+    courseId: '',
+    chapterCode: sanitizeSegment(parts[0] || chapterId),
+  };
 };
 
 const normalizeUrl = (baseUrl, requestPath) => {
@@ -577,6 +614,9 @@ app.on('before-quit', () => {
     runtimeProcess.kill();
     runtimeProcess = null;
   }
+  for (const chapterSegment of codeExecutionByChapter.keys()) {
+    killCodeExecution(chapterSegment, true);
+  }
 });
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
@@ -969,6 +1009,144 @@ const resolvePythonRuntimeBundle = async (indexData) => {
     pythonPath,
     runtimeCwd,
   };
+};
+
+const ensureChapterWorkspaceDir = async (rawChapterId) => {
+  const settings = await loadSettings();
+  const workspaceRoot = getWorkspaceRoot(settings);
+  await ensureDir(workspaceRoot);
+
+  const chapterSegment = sanitizeSegment(rawChapterId);
+  if (!chapterSegment) {
+    throw new Error('Missing chapterId');
+  }
+
+  const chapterDir = assertInside(workspaceRoot, path.join(workspaceRoot, chapterSegment));
+  await ensureDir(chapterDir);
+  return {
+    chapterId: String(rawChapterId || '').trim(),
+    workspaceRoot,
+    chapterSegment,
+    chapterDir,
+  };
+};
+
+const seedWorkspaceFromCurriculumIfNeeded = async (rawChapterId, chapterDir) => {
+  let entries = [];
+  try {
+    entries = await fs.readdir(chapterDir);
+  } catch {
+    entries = [];
+  }
+  if (entries.length > 0) {
+    return;
+  }
+
+  const { courseId, chapterCode } = splitChapterId(rawChapterId);
+  if (!courseId || !chapterCode) {
+    return;
+  }
+
+  const indexData = await loadIndex();
+  const curriculumEntries = Object.entries(indexData?.curriculum || {}).filter(([, entry]) => entry?.path);
+  if (curriculumEntries.length === 0) {
+    return;
+  }
+
+  const sourceRoot = path.join(curriculumEntries[0][1].path, 'content', 'curriculum', courseId, chapterCode);
+  if (!(await pathExists(sourceRoot))) {
+    return;
+  }
+
+  const copyRecursive = async (srcDir, destDir) => {
+    const children = await fs.readdir(srcDir, { withFileTypes: true });
+    for (const child of children) {
+      if (child.name.startsWith('.')) {
+        continue;
+      }
+      const srcPath = path.join(srcDir, child.name);
+      const destPath = assertInside(chapterDir, path.join(destDir, child.name));
+
+      if (child.isDirectory()) {
+        await ensureDir(destPath);
+        await copyRecursive(srcPath, destPath);
+        continue;
+      }
+
+      const lower = child.name.toLowerCase();
+      const shouldSkip =
+        lower.endsWith('.md') ||
+        lower === 'manifest.json' ||
+        lower === 'bundle.manifest.json' ||
+        lower === 'runtime.manifest.json';
+      if (shouldSkip) {
+        continue;
+      }
+
+      try {
+        await fs.access(destPath);
+      } catch {
+        await ensureDir(path.dirname(destPath));
+        await fs.copyFile(srcPath, destPath);
+      }
+    }
+  };
+
+  await copyRecursive(sourceRoot, chapterDir);
+};
+
+const resolvePythonForCodeExecution = async () => {
+  const preferred = String(runtimeLaunchInfo?.pythonPath || '').trim();
+  if (preferred && (await pathExists(preferred))) {
+    return preferred;
+  }
+
+  const bundled = await resolvePythonRuntimeBundle(await loadIndex());
+  const bundledPath = String(bundled?.pythonPath || '').trim();
+  if (bundledPath && (await pathExists(bundledPath))) {
+    return bundledPath;
+  }
+
+  if (process.env.TUTOR_PYTHON) {
+    return process.env.TUTOR_PYTHON;
+  }
+  return process.platform === 'win32' ? 'python' : 'python3';
+};
+
+const cleanupCodeExecution = (chapterSegment) => {
+  const active = codeExecutionByChapter.get(chapterSegment);
+  if (!active) {
+    return;
+  }
+  if (active.timeoutTimer) {
+    clearTimeout(active.timeoutTimer);
+  }
+  codeExecutionByChapter.delete(chapterSegment);
+};
+
+const killCodeExecution = (chapterSegment, killed = false) => {
+  const active = codeExecutionByChapter.get(chapterSegment);
+  if (!active) {
+    return false;
+  }
+  active.killed = killed || active.killed;
+  if (active.timeoutTimer) {
+    clearTimeout(active.timeoutTimer);
+    active.timeoutTimer = null;
+  }
+  if (!active.process.killed) {
+    active.process.kill();
+    setTimeout(() => {
+      try {
+        if (!active.process.killed) {
+          active.process.kill('SIGKILL');
+        }
+      } catch {
+        // no-op
+      }
+    }, 3000);
+  }
+  return true;
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -1433,20 +1611,17 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
 });
 
 ipcMain.handle('code:createFile', async (_event, payload) => {
-  const settings = await loadSettings();
-  const workspaceRoot = getWorkspaceRoot(settings);
-  const chapterId = sanitizeSegment(payload?.chapterId);
+  const rawChapterId = String(payload?.chapterId || '').trim();
   const rawFilename = String(payload?.filename || '');
   const filename = path.basename(rawFilename).replace(/[^\w\-.]/g, '_');
   const content = String(payload?.content || '');
 
-  if (!chapterId || !filename) {
+  if (!rawChapterId || !filename) {
     throw new Error('Missing chapterId or filename');
   }
 
-  const chapterDir = path.join(workspaceRoot, chapterId);
-  await ensureDir(chapterDir);
-
+  const { chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
   const filePath = assertInside(chapterDir, path.join(chapterDir, filename));
 
   try {
@@ -1456,6 +1631,194 @@ ipcMain.handle('code:createFile', async (_event, payload) => {
   }
 
   return { filePath };
+});
+
+ipcMain.handle('code:listFiles', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  if (!rawChapterId) {
+    throw new Error('Missing chapterId');
+  }
+
+  const { chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
+  const entries = await fs.readdir(chapterDir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile()) {
+      continue;
+    }
+    const fullPath = assertInside(chapterDir, path.join(chapterDir, entry.name));
+    const stats = await fs.stat(fullPath);
+    files.push({
+      name: entry.name,
+      size: Number(stats.size || 0),
+      modified: Number(stats.mtimeMs || Date.now()),
+    });
+  }
+
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  return { files };
+});
+
+ipcMain.handle('code:readFile', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  const relPath = normalizeWorkspaceRelativePath(payload?.filename);
+  if (!rawChapterId) {
+    throw new Error('Missing chapterId');
+  }
+
+  const { chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
+  const filePath = assertInside(chapterDir, path.join(chapterDir, relPath));
+  const content = await fs.readFile(filePath, 'utf-8');
+  return { content, filePath };
+});
+
+ipcMain.handle('code:writeFile', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  const relPath = normalizeWorkspaceRelativePath(payload?.filename);
+  const content = String(payload?.content || '');
+  if (!rawChapterId) {
+    throw new Error('Missing chapterId');
+  }
+
+  const { chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
+  const filePath = assertInside(chapterDir, path.join(chapterDir, relPath));
+  await ensureDir(path.dirname(filePath));
+  await fs.writeFile(filePath, content, 'utf-8');
+  return { filePath, bytes: Buffer.byteLength(content, 'utf-8') };
+});
+
+ipcMain.handle('code:execute', async (event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  const code = String(payload?.code || '');
+  const envPatch = payload?.env && typeof payload.env === 'object' ? payload.env : {};
+  const rawTimeout = Number(payload?.timeoutMs);
+  const timeoutMs = Number.isFinite(rawTimeout) ? Math.max(1_000, Math.min(10 * 60_000, rawTimeout)) : DEFAULT_CODE_TIMEOUT_MS;
+  const safeFilename = path.basename(String(payload?.filename || 'main.py')).replace(/[^\w\-.]/g, '_') || 'main.py';
+
+  if (!rawChapterId) {
+    throw new Error('Missing chapterId');
+  }
+
+  const { chapterId, chapterDir, chapterSegment } = await ensureChapterWorkspaceDir(rawChapterId);
+  await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
+  const previous = codeExecutionByChapter.get(chapterSegment);
+  if (previous) {
+    previous.killed = true;
+    if (previous.timeoutTimer) {
+      clearTimeout(previous.timeoutTimer);
+      previous.timeoutTimer = null;
+    }
+    if (!previous.process.killed) {
+      previous.process.kill();
+    }
+    previous.sender.send('code:exit', {
+      chapterId: previous.chapterId,
+      exitCode: -1,
+      signal: 'SIGTERM',
+      timedOut: false,
+      killed: true,
+    });
+    cleanupCodeExecution(chapterSegment);
+    fs.unlink(previous.tempRunPath).catch(() => {});
+  }
+
+  const persistedPath = assertInside(chapterDir, path.join(chapterDir, safeFilename));
+  await fs.writeFile(persistedPath, code, 'utf-8');
+
+  const tempRunPath = assertInside(
+    chapterDir,
+    path.join(chapterDir, `.__run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.py`)
+  );
+  await fs.writeFile(tempRunPath, code, 'utf-8');
+
+  const pythonPath = await resolvePythonForCodeExecution();
+  const proc = spawn(pythonPath, [tempRunPath], {
+    cwd: chapterDir,
+    env: {
+      ...process.env,
+      ...envPatch,
+      PYTHONUNBUFFERED: '1',
+      TUTOR_CHAPTER_ID: chapterId,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  const active = {
+    process: proc,
+    timeoutTimer: null,
+    timedOut: false,
+    killed: false,
+    tempRunPath,
+    chapterId,
+    sender: event.sender,
+  };
+  codeExecutionByChapter.set(chapterSegment, active);
+
+  const sendOutput = (stream, data) => {
+    const text = data?.toString?.() || '';
+    if (!text) {
+      return;
+    }
+    active.sender.send('code:output', { chapterId, stream, data: text });
+  };
+
+  proc.stdout?.on('data', (chunk) => sendOutput('stdout', chunk));
+  proc.stderr?.on('data', (chunk) => sendOutput('stderr', chunk));
+
+  proc.on('error', (error) => {
+    sendOutput('stderr', `[code execution error] ${error instanceof Error ? error.message : String(error)}\n`);
+  });
+
+  active.timeoutTimer = setTimeout(() => {
+    const current = codeExecutionByChapter.get(chapterSegment);
+    if (!current || current.process !== proc) {
+      return;
+    }
+    current.timedOut = true;
+    sendOutput('stderr', `\n[timeout] Execution exceeded ${Math.round(timeoutMs / 1000)}s\n`);
+    if (!current.process.killed) {
+      current.process.kill();
+    }
+  }, timeoutMs);
+
+  proc.on('close', (exitCode, signal) => {
+    const current = codeExecutionByChapter.get(chapterSegment);
+    if (!current || current.process !== proc) {
+      return;
+    }
+
+    const payload = {
+      chapterId,
+      exitCode: typeof exitCode === 'number' ? exitCode : -1,
+      signal: signal || null,
+      timedOut: Boolean(current.timedOut),
+      killed: Boolean(current.killed),
+    };
+    cleanupCodeExecution(chapterSegment);
+    current.sender.send('code:exit', payload);
+    fs.unlink(current.tempRunPath).catch(() => {});
+  });
+
+  return {
+    started: true,
+    chapterId,
+    timeoutMs,
+    pythonPath,
+  };
+});
+
+ipcMain.handle('code:kill', async (_event, payload) => {
+  const chapterId = String(payload?.chapterId || '').trim();
+  const chapterSegment = sanitizeSegment(chapterId);
+  if (!chapterSegment) {
+    throw new Error('Missing chapterId');
+  }
+  const killed = killCodeExecution(chapterSegment, true);
+  return { killed, chapterId };
 });
 
 ipcMain.handle('code:openPath', async (_event, filePath) => {
