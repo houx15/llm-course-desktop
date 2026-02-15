@@ -852,9 +852,22 @@ ipcMain.handle('sidecar:ensureReady', async () => {
   const indexData = await loadIndex();
   const pythonRuntime = indexData?.python_runtime || {};
   const entries = Object.entries(pythonRuntime).filter(([, entry]) => entry?.path);
+  const platformScopeId = getPlatformScopeId();
 
+  // Validate existing install: path must exist on disk
+  let existingVersion = '';
   if (entries.length > 0) {
-    return { ready: true, alreadyInstalled: true };
+    const [scopeId, entry] = entries[0];
+    const bundlePath = String(entry.path || '');
+    const exists = bundlePath && (await pathExists(bundlePath));
+    if (exists) {
+      existingVersion = String(entry.version || '');
+    } else {
+      // Stale index entry — remove it so we proceed to download
+      delete pythonRuntime[scopeId];
+      indexData.python_runtime = pythonRuntime;
+      await saveIndex(indexData);
+    }
   }
 
   const sendProgress = (phase, progress) => {
@@ -866,11 +879,10 @@ ipcMain.handle('sidecar:ensureReady', async () => {
   try {
     sendProgress('checking', { percent: 0, status: 'Checking for sidecar bundle...' });
 
-    const platformScopeId = getPlatformScopeId();
     const installedVersions = {
       app_agents: indexData?.app_agents?.core?.version || '',
       experts_shared: indexData?.experts_shared?.shared?.version || '',
-      python_runtime: '',
+      python_runtime: existingVersion,
     };
 
     const checkResult = await requestBackend({
@@ -878,7 +890,7 @@ ipcMain.handle('sidecar:ensureReady', async () => {
       path: '/v1/updates/check-app',
       body: {
         desktop_version: app.getVersion() || '0.1.0',
-        sidecar_version: '0.0.0',
+        sidecar_version: existingVersion || '0.0.0',
         installed: installedVersions,
         platform_scope: platformScopeId,
       },
@@ -886,15 +898,26 @@ ipcMain.handle('sidecar:ensureReady', async () => {
     });
 
     if (!checkResult.ok) {
+      // If we already have a valid install, tolerate backend failure
+      if (existingVersion) {
+        return { ready: true, alreadyInstalled: true };
+      }
       const msg = `Update check failed (${checkResult.status})`;
       sendProgress('error', { percent: 0, status: msg });
       return { ready: false, error: msg };
     }
 
-    const allReleases = [...(checkResult.data?.required || []), ...(checkResult.data?.optional || [])];
+    const requiredReleases = checkResult.data?.required || [];
+    const optionalReleases = checkResult.data?.optional || [];
+    const allReleases = [...requiredReleases, ...optionalReleases];
     const sidecarRelease = allReleases.find(
       (r) => r.bundle_type === 'python_runtime'
     );
+
+    // No update needed and we have a valid install
+    if (!sidecarRelease && existingVersion) {
+      return { ready: true, alreadyInstalled: true };
+    }
 
     if (!sidecarRelease) {
       const msg = 'No sidecar bundle available from server';
@@ -904,16 +927,27 @@ ipcMain.handle('sidecar:ensureReady', async () => {
 
     sendProgress('downloading', { percent: 0, status: 'Downloading learning engine...' });
 
+    let downloadComplete = false;
     const onDownloadProgress = (progress) => {
-      sendProgress('downloading', {
-        percent: progress.percent,
-        bytesDownloaded: progress.bytesDownloaded,
-        totalBytes: progress.totalBytes,
-        status: 'Downloading learning engine...',
-      });
+      if (!downloadComplete) {
+        sendProgress('downloading', {
+          percent: progress.percent,
+          bytesDownloaded: progress.bytesDownloaded,
+          totalBytes: progress.totalBytes,
+          status: 'Downloading learning engine...',
+        });
+        if (progress.percent >= 100) {
+          downloadComplete = true;
+          sendProgress('installing', { percent: 95, status: 'Installing...' });
+        }
+      }
     };
 
     await installBundleRelease(sidecarRelease, onDownloadProgress);
+    if (!downloadComplete) {
+      // Server returned no Content-Length so percent never reached 100
+      sendProgress('installing', { percent: 95, status: 'Installing...' });
+    }
     sendProgress('done', { percent: 100, status: 'Ready' });
 
     return { ready: true, alreadyInstalled: false };

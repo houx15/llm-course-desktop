@@ -115,7 +115,11 @@ export const updateManager = {
     const indexData = await window.tutorApp.getBundleIndex();
     const installed = getInstalledVersionsForApp(indexData);
     const check = await this.checkAppUpdates(installed);
-    const releases = [...check.required, ...check.optional];
+    // Exclude python_runtime — it goes through the dedicated sidecar:ensureReady
+    // flow which has its own progress UI.
+    const releases = [...check.required, ...check.optional].filter(
+      (r) => r.bundle_type !== 'python_runtime'
+    );
     await installReleases(releases);
     return { installed: releases.length, check };
   },
