@@ -13,6 +13,7 @@ import { courseService } from './services/courseService';
 import { updateManager } from './services/updateManager';
 import { runtimeManager, NormalizedStreamEvent } from './services/runtimeManager';
 import { syncQueue } from './services/syncQueue';
+import { codeWorkspace } from './services/codeWorkspace';
 import { Phase, Chapter, CourseSummary, User } from './types';
 import { Download, Terminal, ChevronUp } from 'lucide-react';
 
@@ -283,6 +284,10 @@ const App: React.FC = () => {
   };
 
   const handleSelectCourse = async (courseId: string) => {
+      const previousChapterId = currentChapter?.id || '';
+      if (previousChapterId) {
+        codeWorkspace.kill(previousChapterId).catch(() => {});
+      }
       setActiveCourseId(courseId);
       setView('course');
       // Reset course internal navigation
@@ -310,12 +315,19 @@ const App: React.FC = () => {
   };
 
   const handleSelectPhase = (phase: Phase) => {
+    if (currentChapter?.id) {
+      codeWorkspace.kill(currentChapter.id).catch(() => {});
+    }
     setCurrentPhase(phase);
     setCurrentChapter(null);
     setIsCodeEditorOpen(false);
   };
 
   const handleSelectChapter = async (chapter: Chapter, phase: Phase) => {
+    const previousChapterId = currentChapter?.id || '';
+    if (previousChapterId && previousChapterId !== chapter.id) {
+      codeWorkspace.kill(previousChapterId).catch(() => {});
+    }
     const chapterCode = chapter.id.includes('/') ? chapter.id.split('/').pop() || chapter.id : chapter.id;
     const courseId = activeCourseId || phase.id;
     try {

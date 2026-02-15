@@ -3,6 +3,8 @@ import { CodeWorkspaceFile } from '../../types';
 import { codeWorkspace } from '../../services/codeWorkspace';
 import CodeEditorToolbar from './CodeEditorToolbar';
 import OutputPanel, { OutputChunk } from './OutputPanel';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface CodeInjection {
   id: number;
@@ -75,6 +77,8 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const [didCopy, setDidCopy] = useState(false);
   const [monacoEditor, setMonacoEditor] = useState<MonacoEditorComponent | null>(null);
   const [monacoLoadDone, setMonacoLoadDone] = useState(false);
+  const fallbackEditorRef = useRef<HTMLTextAreaElement>(null);
+  const fallbackHighlightRef = useRef<HTMLDivElement>(null);
 
   const skipAutosaveRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
@@ -91,6 +95,31 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       data,
     };
     setOutputChunks((prev) => [...prev, next]);
+  };
+
+  const syncFallbackScroll = () => {
+    const editorNode = fallbackEditorRef.current;
+    const highlightNode = fallbackHighlightRef.current;
+    if (!editorNode || !highlightNode) {
+      return;
+    }
+    highlightNode.scrollTop = editorNode.scrollTop;
+    highlightNode.scrollLeft = editorNode.scrollLeft;
+  };
+
+  const handleFallbackKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Tab') {
+      return;
+    }
+    event.preventDefault();
+    const node = event.currentTarget;
+    const start = node.selectionStart || 0;
+    const end = node.selectionEnd || 0;
+    const next = `${code.slice(0, start)}\t${code.slice(end)}`;
+    setCode(next);
+    window.setTimeout(() => {
+      node.selectionStart = node.selectionEnd = start + 1;
+    }, 0);
   };
 
   const flushPendingSave = () => {
@@ -217,6 +246,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
 
     return () => {
       cancelled = true;
+      codeWorkspace.kill(chapterId).catch(() => {});
       flushPendingSave();
     };
   }, [chapterId]);
@@ -343,6 +373,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   };
 
   const editorLanguage = getLanguageFromFilename(activeFile);
+  const highlightedLanguage = editorLanguage === 'plaintext' ? 'text' : editorLanguage;
 
   return (
     <div className={`h-full flex flex-col bg-white min-w-0 ${visible ? 'border-l border-gray-200' : 'border-l-0'}`}>
@@ -402,12 +433,35 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
               },
             })
           ) : (
-            <textarea
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              className="w-full h-full p-3 resize-none border-0 outline-none bg-white font-mono text-[13px] leading-6"
-              spellCheck={false}
-            />
+            <div className="absolute inset-0 bg-white">
+              <div ref={fallbackHighlightRef} aria-hidden className="absolute inset-0 overflow-auto pointer-events-none">
+                <SyntaxHighlighter
+                  language={highlightedLanguage}
+                  style={vs}
+                  PreTag="div"
+                  customStyle={{
+                    margin: 0,
+                    borderRadius: 0,
+                    background: 'transparent',
+                    minHeight: '100%',
+                    padding: '12px',
+                    fontSize: '13px',
+                    lineHeight: '1.5rem',
+                  }}
+                >
+                  {code || ' '}
+                </SyntaxHighlighter>
+              </div>
+              <textarea
+                ref={fallbackEditorRef}
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                onKeyDown={handleFallbackKeyDown}
+                onScroll={syncFallbackScroll}
+                className="absolute inset-0 p-3 resize-none border-0 outline-none bg-transparent font-mono text-[13px] leading-6 text-transparent caret-black selection:bg-blue-200/70 overflow-auto"
+                spellCheck={false}
+              />
+            </div>
           )}
           {!monacoLoadDone && (
             <div className="absolute top-2 left-3 text-xs text-gray-500 bg-white/85 px-2 py-0.5 rounded">Loading editor module...</div>
