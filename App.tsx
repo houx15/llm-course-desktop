@@ -15,6 +15,7 @@ import { runtimeManager, NormalizedStreamEvent } from './services/runtimeManager
 import { syncQueue } from './services/syncQueue';
 import { codeWorkspace } from './services/codeWorkspace';
 import { Phase, Chapter, CourseSummary, User } from './types';
+import SidecarDownloadProgress from './components/SidecarDownloadProgress';
 import { Download, Terminal, ChevronUp } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -37,6 +38,7 @@ const App: React.FC = () => {
     Record<string, { dynamicReport: string; roadmapUpdating: boolean; memoUpdating: boolean }>
   >({});
   const [runtimeNotice, setRuntimeNotice] = useState('');
+  const [showSidecarDownload, setShowSidecarDownload] = useState(false);
   const [editorWidths, setEditorWidths] = useState<Record<string, number>>({});
   const [isResizingEditor, setIsResizingEditor] = useState(false);
   const [chatInjections, setChatInjections] = useState<
@@ -218,12 +220,39 @@ const App: React.FC = () => {
         console.warn('App update check failed:', err);
       }
 
+      // Check if sidecar bundle needs downloading
+      let needsSidecarDownload = false;
+      try {
+        if (window.tutorApp?.checkSidecarBundle) {
+          const bundleStatus = await window.tutorApp.checkSidecarBundle();
+          needsSidecarDownload = !bundleStatus.installed;
+        }
+      } catch (err) {
+        console.warn('Sidecar bundle check failed:', err);
+      }
+
+      if (needsSidecarDownload) {
+        setShowSidecarDownload(true);
+        try {
+          const result = await runtimeManager.ensureSidecarBundle();
+          if (!result.ready) {
+            setRuntimeNotice(result.error || '学习引擎下载失败');
+            return;
+          }
+        } catch (err) {
+          console.warn('Sidecar download failed:', err);
+          setRuntimeNotice(err instanceof Error ? err.message : '学习引擎下载失败');
+          return;
+        }
+      }
+
       try {
         const runtimeResult = await runtimeManager.start();
         if (!runtimeResult.started) {
           setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
         } else {
           setRuntimeNotice('');
+          setShowSidecarDownload(false);
         }
       } catch (err) {
         console.warn('Runtime start failed:', err);
@@ -402,12 +431,35 @@ const App: React.FC = () => {
     }));
   };
 
+  const handleSidecarRetry = async () => {
+    try {
+      const result = await runtimeManager.ensureSidecarBundle();
+      if (result.ready) {
+        setShowSidecarDownload(false);
+        setRuntimeNotice('');
+        const runtimeResult = await runtimeManager.start();
+        if (!runtimeResult.started) {
+          setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
+        }
+      }
+    } catch (err) {
+      console.warn('Sidecar retry failed:', err);
+    }
+  };
+
   const currentChapterId = currentChapter?.id || '';
   const editorWidth = currentChapter ? editorWidths[currentChapter.id] || 520 : 520;
   const currentChatInjection = currentChapterId ? chatInjections[currentChapterId] || null : null;
   const currentCodeInjection = currentChapterId ? codeInjections[currentChapterId] || null : null;
   const currentEditorOutput = currentChapterId ? editorOutputs[currentChapterId] || [] : [];
   const currentEditorFile = currentChapterId ? editorActiveFiles[currentChapterId] || '' : '';
+
+  const sidecarOverlay = showSidecarDownload ? (
+    <SidecarDownloadProgress
+      onRetry={handleSidecarRetry}
+      onDismiss={() => setShowSidecarDownload(false)}
+    />
+  ) : null;
 
   // Render Auth Screen if not logged in
   if (!user) {
@@ -419,6 +471,7 @@ const App: React.FC = () => {
      return (
         <div className="flex flex-col h-screen bg-gray-50 font-sans text-gray-900">
             <TopBar user={user} onLogout={handleLogout} />
+            {sidecarOverlay}
             {runtimeNotice && (
               <div className="px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200">
                 本地运行时异常：{runtimeNotice}
@@ -444,6 +497,7 @@ const App: React.FC = () => {
         onToggleSidebar={view === 'course' ? () => setIsSidebarOpen((prev) => !prev) : undefined}
         isSidebarOpen={isSidebarOpen}
       />
+      {sidecarOverlay}
       {runtimeNotice && (
         <div className="px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200">
           本地运行时异常：{runtimeNotice}

@@ -31,6 +31,14 @@ contextBridge.exposeInMainWorld('tutorApp', {
   listCurriculumChapters: () => ipcRenderer.invoke('curriculum:listChapters'),
   getCurriculumChapterContent: (payload) => ipcRenderer.invoke('curriculum:getChapterContent', payload),
 
+  checkSidecarBundle: () => ipcRenderer.invoke('sidecar:checkBundle'),
+  ensureSidecarReady: () => ipcRenderer.invoke('sidecar:ensureReady'),
+  onSidecarDownloadProgress: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('sidecar:download-progress', listener);
+    return () => ipcRenderer.removeListener('sidecar:download-progress', listener);
+  },
+
   startRuntime: (config) => ipcRenderer.invoke('runtime:start', config),
   stopRuntime: () => ipcRenderer.invoke('runtime:stop'),
   runtimeHealth: () => ipcRenderer.invoke('runtime:health'),

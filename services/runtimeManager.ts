@@ -124,10 +124,30 @@ const loadRuntimeBootstrap = async () => {
   };
 };
 
+export type SidecarSetupStatus =
+  | { phase: 'idle' }
+  | { phase: 'checking' }
+  | { phase: 'downloading'; percent: number }
+  | { phase: 'installing' }
+  | { phase: 'ready' }
+  | { phase: 'error'; message: string };
+
 export const runtimeManager = {
+  async ensureSidecarBundle(): Promise<{ ready: boolean; error?: string }> {
+    if (!window.tutorApp?.ensureSidecarReady) {
+      return { ready: true };
+    }
+    return window.tutorApp.ensureSidecarReady();
+  },
+
   async start() {
     if (!window.tutorApp) {
       return { started: false, reason: 'tutorApp unavailable' };
+    }
+
+    const sidecar = await this.ensureSidecarBundle();
+    if (!sidecar.ready) {
+      return { started: false, reason: sidecar.error || 'Sidecar bundle not available' };
     }
 
     const boot = await loadRuntimeBootstrap();

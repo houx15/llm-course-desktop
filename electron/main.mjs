@@ -365,7 +365,7 @@ const sha256File = async (filePath) => {
   return hash.digest('hex');
 };
 
-const downloadToTemp = async (url) => {
+const downloadToTemp = async (url, onProgress) => {
   if (!isHttpUrl(url)) {
     throw new Error(`Invalid artifact URL for download: ${url}`);
   }
@@ -373,9 +373,33 @@ const downloadToTemp = async (url) => {
   if (!response.ok) {
     throw new Error(`Failed to download artifact: ${response.status}`);
   }
-  const data = Buffer.from(await response.arrayBuffer());
+
+  const totalBytes = Number(response.headers.get('content-length') || 0);
   const tempPath = path.join(os.tmpdir(), `bundle-${Date.now()}-${Math.random().toString(36).slice(2)}.tar.gz`);
-  await fs.writeFile(tempPath, data);
+
+  if (!response.body || !onProgress || !totalBytes) {
+    const data = Buffer.from(await response.arrayBuffer());
+    if (onProgress && totalBytes) {
+      onProgress({ bytesDownloaded: data.length, totalBytes, percent: 100 });
+    }
+    await fs.writeFile(tempPath, data);
+    return tempPath;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytesDownloaded = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(Buffer.from(value));
+    bytesDownloaded += value.length;
+    const percent = totalBytes > 0 ? Math.round((bytesDownloaded / totalBytes) * 100) : 0;
+    onProgress({ bytesDownloaded, totalBytes, percent });
+  }
+
+  await fs.writeFile(tempPath, Buffer.concat(chunks));
   return tempPath;
 };
 
@@ -431,7 +455,7 @@ const prefetchDownloadCredentials = async (release) => {
   }
 };
 
-const installBundleRelease = async (release) => {
+const installBundleRelease = async (release, onProgress) => {
   const settings = await loadSettings();
   const bundlesRoot = getBundlesRoot(settings);
   const bundleType = sanitizeSegment(release?.bundle_type || release?.bundleType || '');
@@ -454,7 +478,7 @@ const installBundleRelease = async (release) => {
 
   await prefetchDownloadCredentials(release);
   const resolvedArtifactUrl = await resolveArtifactDownloadUrl(artifactUrl);
-  const downloadedPath = await downloadToTemp(resolvedArtifactUrl);
+  const downloadedPath = await downloadToTemp(resolvedArtifactUrl, onProgress);
   try {
     if (expectedSha) {
       const actual = await sha256File(downloadedPath);
@@ -805,6 +829,96 @@ ipcMain.handle('bundles:install', async (_event, bundle) => {
 
 ipcMain.handle('bundles:installRelease', async (_event, release) => {
   return installBundleRelease(release);
+});
+
+const getPlatformScopeId = () => {
+  const platform = process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'darwin' : 'linux';
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  return `py312-${platform}-${arch}`;
+};
+
+ipcMain.handle('sidecar:checkBundle', async () => {
+  const indexData = await loadIndex();
+  const pythonRuntime = indexData?.python_runtime || {};
+  const entries = Object.entries(pythonRuntime).filter(([, entry]) => entry?.path);
+  if (entries.length === 0) {
+    return { installed: false, version: null, scopeId: null };
+  }
+  const [scopeId, entry] = entries[0];
+  return { installed: true, version: entry.version, scopeId, path: entry.path };
+});
+
+ipcMain.handle('sidecar:ensureReady', async () => {
+  const indexData = await loadIndex();
+  const pythonRuntime = indexData?.python_runtime || {};
+  const entries = Object.entries(pythonRuntime).filter(([, entry]) => entry?.path);
+
+  if (entries.length > 0) {
+    return { ready: true, alreadyInstalled: true };
+  }
+
+  const sendProgress = (phase, progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('sidecar:download-progress', { phase, ...progress });
+    }
+  };
+
+  try {
+    sendProgress('checking', { percent: 0, status: 'Checking for sidecar bundle...' });
+
+    const platformScopeId = getPlatformScopeId();
+    const installedVersions = {
+      app_agents: indexData?.app_agents?.core?.version || '',
+      experts_shared: indexData?.experts_shared?.shared?.version || '',
+      python_runtime: '',
+    };
+
+    const checkResult = await requestBackend({
+      method: 'POST',
+      path: '/v1/updates/check-app',
+      body: {
+        desktop_version: app.getVersion() || '0.1.0',
+        sidecar_version: '0.0.0',
+        installed: installedVersions,
+        platform_scope: platformScopeId,
+      },
+      withAuth: true,
+    });
+
+    if (!checkResult.ok) {
+      return { ready: false, error: `Update check failed (${checkResult.status})` };
+    }
+
+    const allReleases = [...(checkResult.data?.required || []), ...(checkResult.data?.optional || [])];
+    const sidecarRelease = allReleases.find(
+      (r) => r.bundle_type === 'python_runtime'
+    );
+
+    if (!sidecarRelease) {
+      return { ready: false, error: 'No sidecar bundle available from server' };
+    }
+
+    sendProgress('downloading', { percent: 0, status: 'Downloading learning engine...' });
+
+    const onDownloadProgress = (progress) => {
+      sendProgress('downloading', {
+        percent: progress.percent,
+        bytesDownloaded: progress.bytesDownloaded,
+        totalBytes: progress.totalBytes,
+        status: 'Downloading learning engine...',
+      });
+    };
+
+    sendProgress('installing', { percent: 95, status: 'Installing...' });
+    await installBundleRelease(sidecarRelease, onDownloadProgress);
+    sendProgress('done', { percent: 100, status: 'Ready' });
+
+    return { ready: true, alreadyInstalled: false };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    sendProgress('error', { percent: 0, status: message });
+    return { ready: false, error: message };
+  }
 });
 
 ipcMain.handle('bundles:getIndex', async () => {

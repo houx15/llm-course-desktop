@@ -215,6 +215,24 @@ declare global {
         interaction_protocol?: string;
         socratic_vs_direct?: string;
       }>;
+      checkSidecarBundle: () => Promise<{
+        installed: boolean;
+        version: string | null;
+        scopeId: string | null;
+        path?: string;
+      }>;
+      ensureSidecarReady: () => Promise<{
+        ready: boolean;
+        alreadyInstalled?: boolean;
+        error?: string;
+      }>;
+      onSidecarDownloadProgress: (callback: (payload: {
+        phase: 'checking' | 'downloading' | 'installing' | 'done' | 'error';
+        percent: number;
+        bytesDownloaded?: number;
+        totalBytes?: number;
+        status: string;
+      }) => void) => () => void;
       startRuntime: (config: {
         pythonPath?: string;
         llmProvider: 'anthropic' | 'openai' | 'custom';

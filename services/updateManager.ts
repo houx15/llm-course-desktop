@@ -27,10 +27,20 @@ const asError = (result: { status: number; data: any }) => {
   return new Error(message);
 };
 
-const getInstalledVersionsForApp = (indexData: any): Record<string, string> => ({
-  app_agents: indexData?.app_agents?.core?.version || '',
-  experts_shared: indexData?.experts_shared?.shared?.version || '',
-});
+const getInstalledVersionsForApp = (indexData: any): Record<string, string> => {
+  const pythonRuntimeEntries = Object.entries(indexData?.python_runtime || {}).filter(
+    ([, entry]) => (entry as any)?.version
+  );
+  const pythonRuntimeVersion = pythonRuntimeEntries.length > 0
+    ? String((pythonRuntimeEntries[0][1] as any).version)
+    : '';
+
+  return {
+    app_agents: indexData?.app_agents?.core?.version || '',
+    experts_shared: indexData?.experts_shared?.shared?.version || '',
+    python_runtime: pythonRuntimeVersion,
+  };
+};
 
 const getInstalledVersionsForChapter = (indexData: any, courseId: string, chapterId: string) => {
   const scopeId = `${courseId}/${chapterId}`;
@@ -108,6 +118,32 @@ export const updateManager = {
     const releases = [...check.required, ...check.optional];
     await installReleases(releases);
     return { installed: releases.length, check };
+  },
+
+  async checkSidecarUpdates(): Promise<BundleDescriptor | null> {
+    if (!window.tutorApp) {
+      throw new Error('tutorApp API unavailable');
+    }
+
+    const indexData = await window.tutorApp.getBundleIndex();
+    const installed = getInstalledVersionsForApp(indexData);
+    const check = await this.checkAppUpdates(installed);
+    const allReleases = [...check.required, ...check.optional];
+    return allReleases.find((r) => r.bundle_type === 'python_runtime') || null;
+  },
+
+  async syncSidecarBundle(): Promise<{ installed: boolean; descriptor: BundleDescriptor | null }> {
+    if (!window.tutorApp) {
+      return { installed: false, descriptor: null };
+    }
+
+    const descriptor = await this.checkSidecarUpdates();
+    if (!descriptor) {
+      return { installed: false, descriptor: null };
+    }
+
+    await window.tutorApp.installBundleRelease(descriptor);
+    return { installed: true, descriptor };
   },
 
   async syncChapterBundles(courseId: string, chapterId: string) {
