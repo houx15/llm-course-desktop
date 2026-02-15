@@ -886,7 +886,9 @@ ipcMain.handle('sidecar:ensureReady', async () => {
     });
 
     if (!checkResult.ok) {
-      return { ready: false, error: `Update check failed (${checkResult.status})` };
+      const msg = `Update check failed (${checkResult.status})`;
+      sendProgress('error', { percent: 0, status: msg });
+      return { ready: false, error: msg };
     }
 
     const allReleases = [...(checkResult.data?.required || []), ...(checkResult.data?.optional || [])];
@@ -895,7 +897,9 @@ ipcMain.handle('sidecar:ensureReady', async () => {
     );
 
     if (!sidecarRelease) {
-      return { ready: false, error: 'No sidecar bundle available from server' };
+      const msg = 'No sidecar bundle available from server';
+      sendProgress('error', { percent: 0, status: msg });
+      return { ready: false, error: msg };
     }
 
     sendProgress('downloading', { percent: 0, status: 'Downloading learning engine...' });
@@ -909,7 +913,6 @@ ipcMain.handle('sidecar:ensureReady', async () => {
       });
     };
 
-    sendProgress('installing', { percent: 95, status: 'Installing...' });
     await installBundleRelease(sidecarRelease, onDownloadProgress);
     sendProgress('done', { percent: 100, status: 'Ready' });
 
