@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { BookOpen, UserPlus, LogIn, AlertCircle, Mail, KeyRound } from 'lucide-react';
+import { UserPlus, LogIn, AlertCircle, Mail, KeyRound } from 'lucide-react';
 import { authService } from '../services/authService';
 import { User } from '../types';
+import KnoweiaLogo from './KnoweiaLogo';
 
 interface AuthScreenProps {
   onLogin: (user: User) => void;
@@ -92,11 +93,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <div className="mb-8 text-center">
-        <div className="inline-block bg-black p-4 rounded-2xl shadow-xl shadow-gray-200 mb-4">
-          <BookOpen size={40} className="text-white" />
+        <div className="inline-block rounded-2xl shadow-xl shadow-blue-200/60 ring-1 ring-blue-100 overflow-hidden mb-4">
+          <KnoweiaLogo className="w-[72px] h-[72px] block" />
         </div>
-        <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">LLM & 社会科学</h1>
-        <p className="text-sm font-medium text-gray-500 uppercase tracking-widest mt-2">Local Learning Environment</p>
+        <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Knoweia</h1>
+        <p className="text-sm font-medium text-gray-500 uppercase tracking-widest mt-2">AI Learning Platform</p>
       </div>
 
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">

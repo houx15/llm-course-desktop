@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { BookOpen, Settings, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Settings, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
+import KnoweiaLogo from './KnoweiaLogo';
 
 interface TopBarProps {
   user: {
@@ -25,12 +26,12 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick, onToggleSi
             className={`flex items-center gap-3 ${onLogoClick ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
             onClick={onLogoClick}
           >
-              <div className="bg-black p-2 rounded-xl shadow-lg shadow-gray-200">
-                  <BookOpen size={20} className="text-white"/>
+              <div className="rounded-xl shadow-lg shadow-blue-200/60 ring-1 ring-blue-100 overflow-hidden">
+                  <KnoweiaLogo className="w-9 h-9 block" />
               </div>
               <div>
-                  <h1 className="font-bold text-lg text-gray-900 tracking-tight leading-none">LLM & 社会科学</h1>
-                  <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest mt-0.5">Local Environment</p>
+                  <h1 className="font-bold text-lg text-gray-900 tracking-tight leading-none">Knoweia</h1>
+                  <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest mt-0.5">AI Learning Platform</p>
               </div>
           </div>
 

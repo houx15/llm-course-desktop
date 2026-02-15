@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:3000';
 const appRoot = path.join(__dirname, '..');
+const appIconPath = path.join(appRoot, 'assets', 'icon.png');
 const userDataDir = app.getPath('userData');
 const settingsFilePath = path.join(userDataDir, 'settings.json');
 const authFilePath = path.join(userDataDir, 'auth.store.json');
@@ -514,7 +515,8 @@ const createWindow = async () => {
     minWidth: 1080,
     minHeight: 720,
     backgroundColor: '#ffffff',
-    title: 'LLM & 社会科学',
+    title: 'Knoweia',
+    icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       contextIsolation: true,

@@ -1,5 +1,7 @@
 {
-  "name": "llm-&-社会科学",
+  "name": "knoweia-desktop",
+  "productName": "Knoweia",
+  "description": "Knoweia desktop app for AI-powered tutoring and course learning.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,6 +13,30 @@
     "dev:electron": "VITE_DEV_SERVER_URL=http://localhost:3000 electron ./electron/main.mjs",
     "dev:desktop": "concurrently -k \"npm run dev:renderer\" \"npm run dev:electron\"",
     "build:desktop": "vite build"
+  },
+  "build": {
+    "appId": "com.knoweia.desktop",
+    "productName": "Knoweia",
+    "directories": {
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/icon.png",
+      "assets/icon.ico",
+      "assets/icon.icns",
+      "package.json"
+    ],
+    "mac": {
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "icon": "assets/icon.png"
+    }
   },
   "dependencies": {
     "react": "18.2.0",
