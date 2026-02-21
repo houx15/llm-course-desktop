@@ -969,6 +969,89 @@ const ensureCondaEnv = async (condaRoot, sendProgress) => {
   sendProgress('creating_env', { percent: 54, status: '正在创建运行环境...' });
 };
 
+const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
+  // 1. Check current installed version from index
+  const indexData = await loadIndex();
+  const installedVersions = {
+    app_agents: indexData?.app_agents?.core?.version || '',
+    experts_shared: indexData?.experts_shared?.shared?.version || '',
+    python_runtime: (() => {
+      const entries = Object.values(indexData?.python_runtime || {});
+      return entries.length > 0 ? String(entries[0]?.version || '') : '';
+    })(),
+  };
+
+  sendProgress('downloading_sidecar', { percent: 55, status: '正在检查学习引擎版本...' });
+
+  // 2. Call check-app to find if update is needed
+  const checkResult = await requestBackend({
+    method: 'POST',
+    path: '/v1/updates/check-app',
+    body: {
+      desktop_version: app.getVersion() || '0.1.0',
+      sidecar_version: installedVersions.python_runtime || '0.0.0',
+      installed: installedVersions,
+      platform_scope: getPlatformScopeId(),
+    },
+    withAuth: true,
+  });
+
+  if (!checkResult.ok) {
+    if (installedVersions.python_runtime) return; // tolerate failure if already installed
+    throw new Error(`Sidecar code check failed (${checkResult.status})`);
+  }
+
+  const allReleases = [
+    ...(checkResult.data?.required || []),
+    ...(checkResult.data?.optional || []),
+  ];
+  const sidecarRelease = allReleases.find((r) => r.bundle_type === 'python_runtime');
+
+  if (!sidecarRelease) {
+    if (installedVersions.python_runtime) return;
+    throw new Error('No sidecar code bundle available from server');
+  }
+
+  // 3. Download and extract the bundle
+  sendProgress('downloading_sidecar', { percent: 56, status: '正在下载学习引擎...' });
+
+  let downloadComplete = false;
+  await installBundleRelease(sidecarRelease, (progress) => {
+    if (!downloadComplete) {
+      const displayPercent = Math.round(56 + (progress.percent / 100) * 12);
+      sendProgress('downloading_sidecar', {
+        percent: displayPercent,
+        bytesDownloaded: progress.bytesDownloaded,
+        totalBytes: progress.totalBytes,
+        status: '正在下载学习引擎...',
+      });
+      if (progress.percent >= 100) downloadComplete = true;
+    }
+  });
+
+  // 4. Find the installed bundle root in the updated index
+  const updatedIndex = await loadIndex();
+  const prEntries = Object.entries(updatedIndex?.python_runtime || {}).filter(([, e]) => e?.path);
+  if (prEntries.length === 0) {
+    throw new Error('Sidecar bundle installed but not found in index');
+  }
+  const bundleRoot = String(prEntries[0][1].path);
+
+  // 5. pip install requirements into the conda env
+  const requirementsTxt = path.join(bundleRoot, 'requirements.txt');
+  if (await pathExists(requirementsTxt)) {
+    sendProgress('installing_deps', { percent: 70, status: '正在安装依赖包...' });
+    const pipBin = getCondaEnvPip(condaRoot);
+    await runSubprocess(pipBin, [
+      'install', '-r', requirementsTxt,
+      '--index-url', runtimeConfig.pip_index_url,
+      '--trusted-host', 'mirrors.tuna.tsinghua.edu.cn',
+      '--quiet',
+    ]);
+    sendProgress('installing_deps', { percent: 95, status: '正在安装依赖包...' });
+  }
+};
+
 ipcMain.handle('sidecar:checkBundle', async () => {
   const indexData = await loadIndex();
   const pythonRuntime = indexData?.python_runtime || {};
