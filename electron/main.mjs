@@ -1750,9 +1750,11 @@ const startRuntimeInternal = async (config, options = {}) => {
     ? 'explicit'
     : process.env.TUTOR_PYTHON
       ? 'env'
-      : bundledRuntime?.pythonPath
-        ? `python_runtime:${bundledRuntime.scopeId}`
-        : 'system_path';
+      : condaPythonExists
+        ? 'conda_env'
+        : bundledRuntime?.pythonPath
+          ? `python_runtime:${bundledRuntime.scopeId}`
+          : 'system_path';
   const curriculumBundle = await resolveBundlePath('curriculum');
   const expertsBundle = await resolveBundlePath('experts');
   const appAgentsBundle = await resolveBundlePath('app_agents');
