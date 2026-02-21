@@ -954,12 +954,16 @@ const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
   try {
     sendProgress('installing_conda', { percent: 35, status: '正在安装 Python 环境...' });
 
-    // Silent install
-    await ensureDir(condaRoot);
+    // Silent install.
+    // Only create the parent dir — the installer must create condaRoot itself.
+    // Pre-creating condaRoot (even as an empty dir) makes the .sh installer fail
+    // with "File or directory already exists" unless -u is passed.
+    await ensureDir(path.dirname(condaRoot));
     if (process.platform === 'win32') {
       await runSubprocess(installerPath, ['/S', `/D=${condaRoot}`]);
     } else {
       await fs.chmod(installerPath, 0o755);
+      // -u allows updating an existing (possibly partial) installation
       await runSubprocess('bash', [installerPath, '-b', '-u', '-p', condaRoot]);
     }
 
