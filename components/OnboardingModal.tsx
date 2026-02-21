@@ -9,10 +9,10 @@ interface Provider {
 }
 
 const PROVIDERS: Provider[] = [
-  { id: 'gemini',   name: 'Google Gemini',      defaultModel: 'gemini-2.5-flash-preview',  helpUrl: 'https://aistudio.google.com/app/apikey' },
+  { id: 'gemini',   name: 'Google Gemini',      defaultModel: 'gemini-3-flash-preview',  helpUrl: 'https://aistudio.google.com/app/apikey' },
   { id: 'gpt',      name: 'OpenAI GPT',          defaultModel: 'gpt-4o',                    helpUrl: 'https://platform.openai.com/api-keys' },
   { id: 'deepseek', name: 'DeepSeek',            defaultModel: 'deepseek-chat',             helpUrl: 'https://platform.deepseek.com/api_keys' },
-  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',             helpUrl: 'https://bailian.console.aliyun.com/' },
+  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',             helpUrl: 'https://help.aliyun.com/zh/dashscope/developer-reference/activate-dashscope-and-create-an-api-key' },
   { id: 'glm',      name: 'Zhipu GLM (智谱)',     defaultModel: 'glm-4',                     helpUrl: 'https://open.bigmodel.cn/usercenter/apikeys' },
   { id: 'kimi',     name: 'Moonshot Kimi',       defaultModel: 'moonshot-v1-8k',            helpUrl: 'https://platform.moonshot.cn/console/api-keys' },
 ];
@@ -21,7 +21,7 @@ interface Props {
   onComplete: () => void;
 }
 
-export function OnboardingModal({ onComplete }: Props) {
+export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
   const [providerId, setProviderId] = useState('gpt');
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
@@ -32,9 +32,9 @@ export function OnboardingModal({ onComplete }: Props) {
   // Load current storageRoot default on mount
   useEffect(() => {
     if (!window.tutorApp) return;
-    window.tutorApp.getSettings().then((s) => {
-      setStorageRoot(s.storageRoot || '');
-    });
+    window.tutorApp.getSettings()
+      .then((s) => setStorageRoot(s.storageRoot || ''))
+      .catch(() => setError('Failed to load settings'));
   }, []);
 
   const provider = PROVIDERS.find((p) => p.id === providerId) || PROVIDERS[0];
@@ -79,9 +79,9 @@ export function OnboardingModal({ onComplete }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       {/* No onClick on backdrop — cannot be dismissed by clicking outside */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Welcome! Let's get started</h2>
-        <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome! Let's get started</h2>
+        <p className="text-gray-500 mb-6 text-sm">
           Configure your AI provider to begin learning.
         </p>
 
@@ -89,7 +89,7 @@ export function OnboardingModal({ onComplete }: Props) {
         <div className="mb-4">
           <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">AI Provider</label>
           <select
-            className="w-full appearance-none px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-800 dark:text-white bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+            className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-800 bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
             value={providerId}
             onChange={(e) => { setProviderId(e.target.value); setApiKey(''); setShowKey(false); }}
           >
@@ -115,7 +115,7 @@ export function OnboardingModal({ onComplete }: Props) {
           <div className="relative">
             <input
               type={showKey ? 'text' : 'password'}
-              className="w-full pl-4 pr-10 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm font-mono bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg text-sm font-mono bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               placeholder="Paste your API key"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
@@ -139,13 +139,13 @@ export function OnboardingModal({ onComplete }: Props) {
             <input
               type="text"
               readOnly
-              className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm font-mono bg-gray-50 dark:bg-gray-700 dark:text-white truncate"
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono bg-gray-50 truncate"
               value={storageRoot}
               placeholder="Default location"
             />
             <button
               type="button"
-              className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap transition-colors"
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 whitespace-nowrap transition-colors"
               onClick={handleChooseStorage}
             >
               Choose
@@ -155,7 +155,7 @@ export function OnboardingModal({ onComplete }: Props) {
         </div>
 
         {error && (
-          <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>
+          <p className="mb-4 text-sm text-red-600">{error}</p>
         )}
 
         <button
@@ -169,4 +169,4 @@ export function OnboardingModal({ onComplete }: Props) {
       </div>
     </div>
   );
-}
+};
