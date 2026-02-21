@@ -66,7 +66,12 @@ const installReleases = async (releases: BundleDescriptor[]) => {
   }
 
   for (const release of releases) {
-    await window.tutorApp.installBundleRelease(release);
+    try {
+      await window.tutorApp.installBundleRelease(release);
+    } catch (err) {
+      // Log per-bundle failures but continue — one bad URL shouldn't block the rest
+      console.warn(`Bundle install failed (${release.bundle_type}/${release.scope_id}):`, err);
+    }
   }
 };
 
