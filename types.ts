@@ -121,6 +121,8 @@ declare global {
         rememberKeys: Record<string, boolean>;
         modelConfigs: Record<string, { model: string }>;
         activeProvider: string;
+        llmFormat: string;
+        llmBaseUrl: string;
       }>;
       setSettings: (patch: Partial<{
         storageRoot: string;
@@ -128,6 +130,8 @@ declare global {
         rememberKeys: Record<string, boolean>;
         modelConfigs: Record<string, { model: string }>;
         activeProvider: string;
+        llmFormat: string;
+        llmBaseUrl: string;
       }>) => Promise<any>;
       chooseStorageRoot: () => Promise<{ canceled: boolean; path?: string; settings?: any }>;
       getAuth: () => Promise<{

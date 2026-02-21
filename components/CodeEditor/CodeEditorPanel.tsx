@@ -86,6 +86,13 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const latestDocRef = useRef({ chapterId, activeFile, code });
   const lastAppliedInjectionRef = useRef<number | null>(null);
 
+  // Callback refs: always point to the latest prop without being useEffect deps.
+  // This prevents infinite loops when parent passes inline arrow functions.
+  const onOutputChangeRef = useRef(onOutputChange);
+  onOutputChangeRef.current = onOutputChange;
+  const onOutputGeneratedRef = useRef(onOutputGenerated);
+  onOutputGeneratedRef.current = onOutputGenerated;
+
   const outputText = useMemo(() => outputChunks.map((chunk) => chunk.data).join(''), [outputChunks]);
 
   const appendOutput = (stream: 'stdout' | 'stderr', data: string) => {
@@ -178,8 +185,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
 
     const loadOptionalMonaco = async () => {
       try {
-        const moduleName = '@monaco-editor/react';
-        const imported = await import(/* @vite-ignore */ moduleName);
+        const imported = await import('@monaco-editor/react');
         if (cancelled) return;
         if (imported?.default) {
           setMonacoEditor(() => imported.default as MonacoEditorComponent);
@@ -262,9 +268,9 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   }, []);
 
   useEffect(() => {
-    onOutputChange?.(outputChunks);
-    onOutputGenerated?.(outputText);
-  }, [outputChunks, outputText, onOutputChange, onOutputGenerated]);
+    onOutputChangeRef.current?.(outputChunks);
+    onOutputGeneratedRef.current?.(outputText);
+  }, [outputChunks, outputText]);
 
   useEffect(() => {
     const offOutput = codeWorkspace.onOutput((event) => {

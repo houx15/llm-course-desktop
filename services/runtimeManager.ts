@@ -51,7 +51,8 @@ const mapProvider = (providerId: string) => {
       return { llmProvider: 'custom' as const, defaultModel: 'moonshot-v1-8k', baseUrl: 'https://api.moonshot.cn/v1' };
     case 'gemini':
     default:
-      return { llmProvider: 'custom' as const, defaultModel: 'gemini-2.0-flash', baseUrl: '' };
+      // Gemini exposes an OpenAI-compatible endpoint; 'custom' provider uses that.
+      return { llmProvider: 'custom' as const, defaultModel: 'gemini-2.0-flash', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/' };
   }
 };
 
@@ -117,12 +118,18 @@ const loadRuntimeBootstrap = async () => {
   const model = modelConfig?.model || providerMeta.defaultModel;
   const keyResult = await window.tutorApp.getLlmKey(activeProvider);
 
+  // Prefer explicit user-configured format/baseUrl; fall back to per-provider defaults.
+  const llmFormat = (settings.llmFormat as RuntimeConfig['llmProvider']) || providerMeta.llmProvider;
+  const llmBaseUrl = settings.llmBaseUrl || providerMeta.baseUrl || '';
+
   return {
     settings,
     activeProvider,
     providerMeta,
     model,
     apiKey: keyResult.key || '',
+    llmFormat,
+    llmBaseUrl,
   };
 };
 
@@ -194,10 +201,10 @@ export const runtimeManager = {
     }
 
     const runtimeConfig: RuntimeConfig = {
-      llmProvider: boot.providerMeta.llmProvider,
+      llmProvider: boot.llmFormat,
       llmApiKey: boot.apiKey,
       llmModel: boot.model,
-      llmBaseUrl: boot.providerMeta.baseUrl || undefined,
+      llmBaseUrl: boot.llmBaseUrl || undefined,
     };
 
     try {

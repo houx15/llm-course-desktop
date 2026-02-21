@@ -43,6 +43,8 @@ const defaultSettings = () => ({
   rememberKeys: {},
   modelConfigs: {},
   activeProvider: 'gpt',
+  llmFormat: 'custom',
+  llmBaseUrl: '',
 });
 
 // Fixed URL constants — not user-configurable
@@ -73,6 +75,47 @@ const safeJson = (text, fallback) => {
 
 const ensureDir = async (dir) => {
   await fs.mkdir(dir, { recursive: true });
+};
+
+/**
+ * One-time migration: if the new TutorApp dir doesn't exist yet but data
+ * was left at a legacy path (e.g. ~/Library/Application Support/Electron/TutorApp
+ * on macOS, where userData used to land before we pinned it to ~/.knoweia),
+ * copy it over so existing bundles and the index are preserved.
+ */
+const migrateLegacyTutorAppData = async () => {
+  const newTutorRoot = path.join(userDataDir, 'TutorApp');
+  const newIndexPath = path.join(newTutorRoot, 'active_index.json');
+
+  try {
+    await fs.access(newIndexPath);
+    return; // Already migrated
+  } catch {
+    // New index doesn't exist — look for legacy data
+  }
+
+  const legacyCandidates = [];
+  if (process.platform === 'darwin') {
+    legacyCandidates.push(
+      path.join(os.homedir(), 'Library', 'Application Support', 'Electron', 'TutorApp'),
+      path.join(os.homedir(), 'Library', 'Application Support', 'Knoweia', 'TutorApp'),
+    );
+  } else if (process.platform === 'win32') {
+    const appData = process.env.APPDATA || '';
+    if (appData) legacyCandidates.push(path.join(appData, 'Electron', 'TutorApp'));
+  }
+
+  for (const legacy of legacyCandidates) {
+    try {
+      await fs.access(path.join(legacy, 'active_index.json'));
+      await ensureDir(newTutorRoot);
+      await fs.cp(legacy, newTutorRoot, { recursive: true, errorOnExist: false });
+      console.log(`[migration] Copied legacy TutorApp data from ${legacy} → ${newTutorRoot}`);
+      return;
+    } catch {
+      // This candidate doesn't exist, try next
+    }
+  }
 };
 
 const encryptString = (plain) => {
@@ -619,7 +662,8 @@ const createWindow = async () => {
   });
 };
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await migrateLegacyTutorAppData();
   createWindow();
 
   app.on('activate', () => {

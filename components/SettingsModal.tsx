@@ -7,17 +7,12 @@ interface SettingsModalProps {
 }
 
 const PROVIDERS = [
-  { id: 'gemini', name: 'Google Gemini', defaultModel: 'gemini-2.0-flash', helpUrl: 'https://aistudio.google.com/app/apikey' },
-  { id: 'gpt', name: 'OpenAI GPT', defaultModel: 'gpt-4o', helpUrl: 'https://platform.openai.com/api-keys' },
-  { id: 'deepseek', name: 'DeepSeek', defaultModel: 'deepseek-chat', helpUrl: 'https://platform.deepseek.com/api_keys' },
-  {
-    id: 'qwen',
-    name: 'Aliyun Qwen (通义千问)',
-    defaultModel: 'qwen-turbo',
-    helpUrl: 'https://help.aliyun.com/zh/dashscope/developer-reference/activate-dashscope-and-create-an-api-key',
-  },
-  { id: 'glm', name: 'Zhipu GLM (智谱)', defaultModel: 'glm-4', helpUrl: 'https://open.bigmodel.cn/usercenter/apikeys' },
-  { id: 'kimi', name: 'Moonshot Kimi', defaultModel: 'moonshot-v1-8k', helpUrl: 'https://platform.moonshot.cn/console/api-keys' },
+  { id: 'gemini',   name: 'Google Gemini',         defaultModel: 'gemini-2.0-flash',  llmFormat: 'custom',    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', helpUrl: 'https://aistudio.google.com/app/apikey' },
+  { id: 'gpt',      name: 'OpenAI GPT',             defaultModel: 'gpt-4o',            llmFormat: 'openai',    baseUrl: '',                                                           helpUrl: 'https://platform.openai.com/api-keys' },
+  { id: 'deepseek', name: 'DeepSeek',               defaultModel: 'deepseek-chat',     llmFormat: 'custom',    baseUrl: 'https://api.deepseek.com',                                   helpUrl: 'https://platform.deepseek.com/api_keys' },
+  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',         llmFormat: 'custom',    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',         helpUrl: 'https://help.aliyun.com/zh/dashscope/developer-reference/activate-dashscope-and-create-an-api-key' },
+  { id: 'glm',      name: 'Zhipu GLM (智谱)',       defaultModel: 'glm-4',             llmFormat: 'custom',    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',                       helpUrl: 'https://open.bigmodel.cn/usercenter/apikeys' },
+  { id: 'kimi',     name: 'Moonshot Kimi',          defaultModel: 'moonshot-v1-8k',    llmFormat: 'custom',    baseUrl: 'https://api.moonshot.cn/v1',                                 helpUrl: 'https://platform.moonshot.cn/console/api-keys' },
 ];
 
 type ProviderConfig = {
@@ -33,6 +28,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   const [activeProviderId, setActiveProviderId] = useState('gpt');
   const [configs, setConfigs] = useState<Record<string, ProviderConfig>>({});
+  const [llmFormat, setLlmFormat] = useState('custom');
+  const [llmBaseUrl, setLlmBaseUrl] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState('');
@@ -46,7 +43,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       const settings = await window.tutorApp!.getSettings();
       setStorageRoot(settings.storageRoot || '');
       setRememberLogin(settings.rememberLogin !== false);
-      setActiveProviderId(settings.activeProvider || 'gemini');
+      const providerId = settings.activeProvider || 'gpt';
+      setActiveProviderId(providerId);
+      const presetProvider = PROVIDERS.find((p) => p.id === providerId);
+      setLlmFormat(settings.llmFormat || presetProvider?.llmFormat || 'custom');
+      setLlmBaseUrl(settings.llmBaseUrl !== undefined ? settings.llmBaseUrl : (presetProvider?.baseUrl || ''));
 
       const mergedConfigs: Record<string, ProviderConfig> = {};
       for (const provider of PROVIDERS) {
@@ -118,6 +119,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         rememberKeys,
         modelConfigs,
         activeProvider: activeProviderId,
+        llmFormat,
+        llmBaseUrl,
       });
 
       if (!rememberLogin) {
@@ -214,7 +217,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     <select
                       value={activeProviderId}
                       onChange={(e) => {
-                        setActiveProviderId(e.target.value);
+                        const pid = e.target.value;
+                        setActiveProviderId(pid);
+                        const p = PROVIDERS.find((x) => x.id === pid);
+                        if (p) { setLlmFormat(p.llmFormat); setLlmBaseUrl(p.baseUrl); }
                         setShowKey(false);
                       }}
                       className="w-full appearance-none pl-4 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
@@ -226,6 +232,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                       ))}
                     </select>
                     <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="mb-6 grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase">接口格式</label>
+                    <select
+                      value={llmFormat}
+                      onChange={(e) => setLlmFormat(e.target.value)}
+                      className="w-full appearance-none px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="custom">Custom (OpenAI-compat)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Base URL</label>
+                    <input
+                      type="text"
+                      value={llmBaseUrl}
+                      onChange={(e) => setLlmBaseUrl(e.target.value)}
+                      placeholder="https://api.openai.com"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
                   </div>
                 </div>
 

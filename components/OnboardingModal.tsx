@@ -5,16 +5,18 @@ interface Provider {
   id: string;
   name: string;
   defaultModel: string;
+  llmFormat: string;
+  baseUrl: string;
   helpUrl: string;
 }
 
 const PROVIDERS: Provider[] = [
-  { id: 'gemini',   name: 'Google Gemini',      defaultModel: 'gemini-2.0-flash',  helpUrl: 'https://aistudio.google.com/app/apikey' },
-  { id: 'gpt',      name: 'OpenAI GPT',          defaultModel: 'gpt-4o',                    helpUrl: 'https://platform.openai.com/api-keys' },
-  { id: 'deepseek', name: 'DeepSeek',            defaultModel: 'deepseek-chat',             helpUrl: 'https://platform.deepseek.com/api_keys' },
-  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',             helpUrl: 'https://help.aliyun.com/zh/dashscope/developer-reference/activate-dashscope-and-create-an-api-key' },
-  { id: 'glm',      name: 'Zhipu GLM (智谱)',     defaultModel: 'glm-4',                     helpUrl: 'https://open.bigmodel.cn/usercenter/apikeys' },
-  { id: 'kimi',     name: 'Moonshot Kimi',       defaultModel: 'moonshot-v1-8k',            helpUrl: 'https://platform.moonshot.cn/console/api-keys' },
+  { id: 'gemini',   name: 'Google Gemini',         defaultModel: 'gemini-2.0-flash', llmFormat: 'custom', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', helpUrl: 'https://aistudio.google.com/app/apikey' },
+  { id: 'gpt',      name: 'OpenAI GPT',             defaultModel: 'gpt-4o',           llmFormat: 'openai', baseUrl: '',                                                           helpUrl: 'https://platform.openai.com/api-keys' },
+  { id: 'deepseek', name: 'DeepSeek',               defaultModel: 'deepseek-chat',    llmFormat: 'custom', baseUrl: 'https://api.deepseek.com',                                   helpUrl: 'https://platform.deepseek.com/api_keys' },
+  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',        llmFormat: 'custom', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',         helpUrl: 'https://help.aliyun.com/zh/dashscope/developer-reference/activate-dashscope-and-create-an-api-key' },
+  { id: 'glm',      name: 'Zhipu GLM (智谱)',       defaultModel: 'glm-4',            llmFormat: 'custom', baseUrl: 'https://open.bigmodel.cn/api/paas/v4',                       helpUrl: 'https://open.bigmodel.cn/usercenter/apikeys' },
+  { id: 'kimi',     name: 'Moonshot Kimi',          defaultModel: 'moonshot-v1-8k',   llmFormat: 'custom', baseUrl: 'https://api.moonshot.cn/v1',                                 helpUrl: 'https://platform.moonshot.cn/console/api-keys' },
 ];
 
 interface Props {
@@ -23,6 +25,9 @@ interface Props {
 
 export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
   const [providerId, setProviderId] = useState('gpt');
+  const [llmFormat, setLlmFormat] = useState('openai');
+  const [llmBaseUrl, setLlmBaseUrl] = useState('');
+  const [llmModel, setLlmModel] = useState('gpt-4o');
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [storageRoot, setStorageRoot] = useState('');
@@ -66,8 +71,10 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
       await window.tutorApp.setSettings({
         activeProvider: providerId,
         storageRoot,
+        llmFormat,
+        llmBaseUrl,
         rememberKeys: { ...currentSettings.rememberKeys, [providerId]: true },
-        modelConfigs: { ...currentSettings.modelConfigs, [providerId]: { model: provider.defaultModel } },
+        modelConfigs: { ...currentSettings.modelConfigs, [providerId]: { model: llmModel || provider.defaultModel } },
       });
       onComplete();
     } catch (err) {
@@ -92,12 +99,56 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
           <select
             className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-800 bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
             value={providerId}
-            onChange={(e) => { setProviderId(e.target.value); setApiKey(''); setShowKey(false); }}
+            onChange={(e) => {
+              const pid = e.target.value;
+              setProviderId(pid);
+              const p = PROVIDERS.find((x) => x.id === pid);
+              if (p) { setLlmFormat(p.llmFormat); setLlmBaseUrl(p.baseUrl); setLlmModel(p.defaultModel); }
+              setApiKey(''); setShowKey(false);
+            }}
           >
             {PROVIDERS.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+        </div>
+
+        {/* LLM Format + Base URL */}
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">接口格式</label>
+            <select
+              className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none"
+              value={llmFormat}
+              onChange={(e) => setLlmFormat(e.target.value)}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="custom">Custom (OpenAI-compat)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Base URL</label>
+            <input
+              type="text"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="https://api.openai.com"
+              value={llmBaseUrl}
+              onChange={(e) => setLlmBaseUrl(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Model */}
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">模型名称</label>
+          <input
+            type="text"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="e.g. gpt-4o"
+            value={llmModel}
+            onChange={(e) => setLlmModel(e.target.value)}
+          />
         </div>
 
         {/* API Key */}
