@@ -208,6 +208,15 @@ declare global {
       listBundles: (type: 'curriculum' | 'agents' | 'experts') => Promise<string[]>;
       getBundleIndex: () => Promise<any>;
       listCurriculumChapters: () => Promise<Array<{ courseId: string; chapterId: string; title: string }>>;
+      getCurriculumCourseOverview: (payload: { courseId: string }) => Promise<{
+        title?: string;
+        overview?: {
+          experience?: string;
+          gains?: string;
+          necessity?: string;
+          journey?: string;
+        };
+      }>;
       getCurriculumChapterContent: (payload: { courseId: string; chapterId: string }) => Promise<{
         chapter_context: string;
         task_list: string;
@@ -277,7 +286,7 @@ declare global {
       killCodeExecution: (payload: { chapterId: string }) => Promise<{ killed: boolean; chapterId: string }>;
       onCodeOutput: (callback: (payload: CodeExecutionOutputEvent) => void) => () => void;
       onCodeExit: (callback: (payload: CodeExecutionExitEvent) => void) => () => void;
-      getRuntimeLogs: () => Promise<{ stderr: string }>;
+      getRuntimeLogs: () => Promise<{ stderr: string; logFile?: string }>;
       onRuntimeLog: (callback: (payload: { stream: 'stderr'; text: string }) => void) => () => void;
     };
   }

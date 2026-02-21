@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('tutorApp', {
 
   listCurriculumChapters: () => ipcRenderer.invoke('curriculum:listChapters'),
   getCurriculumChapterContent: (payload) => ipcRenderer.invoke('curriculum:getChapterContent', payload),
+  getCurriculumCourseOverview: (payload) => ipcRenderer.invoke('curriculum:getCourseOverview', payload),
 
   checkSidecarBundle: () => ipcRenderer.invoke('sidecar:checkBundle'),
   ensureSidecarReady: () => ipcRenderer.invoke('sidecar:ensureReady'),

@@ -67,20 +67,29 @@ export const contentService = {
       chaptersByCourse.set(entry.courseId, list);
     }
 
-    const phases: Phase[] = Array.from(chaptersByCourse.entries()).map(([courseId, courseChapters]) => {
-      return {
-        id: courseId,
-        title: courseId,
-        status: 'IN_PROGRESS' as CompletionStatus,
-        overview: {
-          experience: '',
-          gains: '',
-          necessity: '',
-          journey: '',
-        },
-        chapters: courseChapters,
-      };
-    });
+    const phases: Phase[] = await Promise.all(
+      Array.from(chaptersByCourse.entries()).map(async ([courseId, courseChapters]) => {
+        let overviewData: { title?: string; overview?: { experience?: string; gains?: string; necessity?: string; journey?: string } } = {};
+        try {
+          overviewData = await window.tutorApp!.getCurriculumCourseOverview({ courseId });
+        } catch {
+          // file missing — leave overview empty
+        }
+        const ov = overviewData.overview || {};
+        return {
+          id: courseId,
+          title: overviewData.title || courseId,
+          status: 'IN_PROGRESS' as CompletionStatus,
+          overview: {
+            experience: ov.experience || '',
+            gains: ov.gains || '',
+            necessity: ov.necessity || '',
+            journey: ov.journey || '',
+          },
+          chapters: courseChapters,
+        };
+      })
+    );
 
     return phases;
   },

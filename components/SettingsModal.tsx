@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Key, HardDrive, Database, Eye, EyeOff, ExternalLink, ChevronDown, Check } from 'lucide-react';
+import { X, Save, Key, HardDrive, Database, Eye, EyeOff, ExternalLink, ChevronDown, Check, Info, RefreshCw, FolderOpen } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,7 +22,7 @@ type ProviderConfig = {
 };
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'storage' | 'api'>('storage');
+  const [activeTab, setActiveTab] = useState<'storage' | 'api' | 'about'>('storage');
   const [storageRoot, setStorageRoot] = useState('');
   const [rememberLogin, setRememberLogin] = useState(true);
 
@@ -33,6 +33,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [showKey, setShowKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState('');
+
+  // About tab state
+  const [appVersion, setAppVersion] = useState('');
+  const [sidecarVersion, setSidecarVersion] = useState('');
+  const [logFile, setLogFile] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'>('idle');
+  const [updateMessage, setUpdateMessage] = useState('');
 
   useEffect(() => {
     if (!isOpen || !window.tutorApp) {
@@ -61,6 +68,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       }
       setConfigs(mergedConfigs);
       setNotice('');
+
+      // Load version info for About tab
+      try {
+        const [ver, index, logs] = await Promise.all([
+          window.tutorApp!.getVersion(),
+          window.tutorApp!.getBundleIndex(),
+          window.tutorApp!.getRuntimeLogs(),
+        ]);
+        setAppVersion(ver || '');
+        const runtimeEntry = Object.values((index?.python_runtime || {}) as Record<string, any>)[0];
+        setSidecarVersion(runtimeEntry?.version || '(未安装)');
+        setLogFile((logs as any)?.logFile || '');
+      } catch {
+        // non-fatal
+      }
     };
 
     load().catch((err) => {
@@ -135,6 +157,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   };
 
+  const handleCheckUpdates = async () => {
+    if (!window.tutorApp || updateStatus === 'checking') return;
+    setUpdateStatus('checking');
+    setUpdateMessage('');
+    try {
+      const index = await window.tutorApp.getBundleIndex();
+      const installed: Record<string, string> = {};
+      for (const [scopeId, entry] of Object.entries((index?.python_runtime || {}) as Record<string, any>)) {
+        if (entry?.version) installed[scopeId] = entry.version;
+      }
+      const result = await window.tutorApp.checkAppUpdates({
+        desktop_version: appVersion || '0.0.0',
+        sidecar_version: sidecarVersion && sidecarVersion !== '(未安装)' ? sidecarVersion : '0.0.0',
+        installed,
+      });
+      if (result.ok && result.data?.updates?.length > 0) {
+        setUpdateStatus('update-available');
+        setUpdateMessage(`发现 ${result.data.updates.length} 个更新`);
+      } else if (result.ok) {
+        setUpdateStatus('up-to-date');
+        setUpdateMessage('已是最新版本');
+      } else {
+        setUpdateStatus('error');
+        setUpdateMessage(`检查失败 (${result.status})`);
+      }
+    } catch (err) {
+      setUpdateStatus('error');
+      setUpdateMessage(err instanceof Error ? err.message : '检查失败');
+    }
+  };
+
   const currentProvider = useMemo(() => PROVIDERS.find((p) => p.id === activeProviderId) || PROVIDERS[0], [activeProviderId]);
   const currentConfig = configs[activeProviderId] || { key: '', model: currentProvider.defaultModel, rememberKey: false };
 
@@ -169,6 +222,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             >
               <Key size={16} />
               模型设置
+            </button>
+            <button
+              onClick={() => setActiveTab('about')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
+                activeTab === 'about' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Info size={16} />
+              关于
             </button>
           </div>
 
@@ -320,6 +382,66 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <Check size={14} className="mt-0.5 text-green-500 shrink-0" />
                   <p>API Key 不会存入 localStorage。仅在你勾选“记住”后写入系统安全存储。</p>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'about' && (
+              <div className="space-y-6">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Info size={16} className="text-blue-500" /> 关于 &amp; 更新
+                </h3>
+
+                {/* Version rows */}
+                <div className="space-y-3">
+                  {[
+                    { label: '应用版本', value: appVersion || '…' },
+                    { label: 'Sidecar 版本', value: sidecarVersion || '…' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex items-center justify-between py-2 border-b border-gray-100">
+                      <span className="text-sm text-gray-600">{label}</span>
+                      <span className="text-sm font-mono font-semibold text-gray-800">{value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Check updates button */}
+                <button
+                  onClick={handleCheckUpdates}
+                  disabled={updateStatus === 'checking'}
+                  className="flex items-center gap-2 px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-60 transition-colors"
+                >
+                  <RefreshCw size={14} className={updateStatus === 'checking' ? 'animate-spin' : ''} />
+                  {updateStatus === 'checking' ? '检查中…' : '检查更新'}
+                </button>
+
+                {updateMessage && (
+                  <p className={`text-sm font-medium ${
+                    updateStatus === 'update-available' ? 'text-blue-600' :
+                    updateStatus === 'up-to-date' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {updateMessage}
+                  </p>
+                )}
+
+                {/* Log file path */}
+                {logFile && (
+                  <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                    <p className="text-xs font-bold text-gray-500 uppercase">Sidecar 日志文件</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-[11px] font-mono bg-gray-50 border border-gray-200 rounded px-2 py-1.5 text-gray-600 truncate">
+                        {logFile}
+                      </code>
+                      <button
+                        title="在 Finder 中显示"
+                        onClick={() => window.tutorApp?.openExternal('file://' + logFile.replace(/[^/]+$/, ''))}
+                        className="p-1.5 text-gray-400 hover:text-gray-700 border border-gray-200 rounded hover:bg-gray-50"
+                      >
+                        <FolderOpen size={14} />
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400">发生错误时，用文本编辑器打开此文件查看详细日志。</p>
+                  </div>
+                )}
               </div>
             )}
 

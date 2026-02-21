@@ -1245,6 +1245,26 @@ ipcMain.handle('curriculum:listChapters', async () => {
   return chapters;
 });
 
+// Returns course_overview.json from content/curriculum/{courseId}/course_overview.json
+// Returns {} (empty) if the file does not exist — callers should treat missing fields as ''.
+ipcMain.handle('curriculum:getCourseOverview', async (_event, payload) => {
+  const { courseId } = payload || {};
+  if (!courseId) throw new Error('Missing courseId');
+
+  const indexData = await loadIndex();
+  const curriculumEntries = Object.entries(indexData.curriculum || {});
+  if (curriculumEntries.length === 0) return {};
+
+  const [, entry] = curriculumEntries[0];
+  const overviewPath = path.join(entry.path, 'content', 'curriculum', sanitizeSegment(courseId), 'course_overview.json');
+  try {
+    const raw = await fs.readFile(overviewPath, 'utf-8');
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+});
+
 ipcMain.handle('curriculum:getChapterContent', async (_event, payload) => {
   const { courseId, chapterId } = payload || {};
   if (!courseId || !chapterId) {
@@ -1859,6 +1879,7 @@ const startRuntimeInternal = async (config, options = {}) => {
     HOST: '127.0.0.1',
     PORT: '8000',
     TUTOR_ROOT: tutorRoot,
+    LOG_FILE: path.join(getSessionsRoot(settings), 'sidecar.log'),
   };
 
   runtimeProcess = spawn(
@@ -1969,7 +1990,9 @@ ipcMain.handle('runtime:preflight', async () => {
 });
 
 ipcMain.handle('runtime:getLogs', async () => {
-  return { stderr: runtimeStderrBuffer };
+  const settings = await loadSettings();
+  const logFile = path.join(getSessionsRoot(settings), 'sidecar.log');
+  return { stderr: runtimeStderrBuffer, logFile };
 });
 
 ipcMain.handle('runtime:createSession', async (_event, payload) => {
