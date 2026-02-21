@@ -852,7 +852,16 @@ const pathExists = async (candidatePath) => {
   }
 };
 
-const getCondaRoot = (tutorRoot) => path.join(tutorRoot, 'miniconda');
+// Conda must live in a space-free path — pip refuses to install into directories with spaces.
+// macOS userData is ~/Library/Application Support/... (has space), so we use home dir instead.
+const getCondaRoot = () => {
+  if (process.platform === 'win32') {
+    // %LOCALAPPDATA% (e.g. C:\Users\Name\AppData\Local) avoids spaces more reliably than home
+    const base = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local');
+    return path.join(base, 'knoweia', 'miniconda');
+  }
+  return path.join(app.getPath('home'), '.knoweia', 'miniconda');
+};
 
 const getCondaBin = (condaRoot) => process.platform === 'win32'
   ? path.join(condaRoot, 'Scripts', 'conda.exe')
@@ -1091,7 +1100,7 @@ ipcMain.handle('sidecar:ensureReady', async () => {
   _ensureReadyPromise = (async () => {
     const settings = await loadSettings();
     const tutorRoot = getTutorRoot(settings);
-    const condaRoot = getCondaRoot(tutorRoot);
+    const condaRoot = getCondaRoot();
 
     const sendProgress = (phase, progress) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1738,7 +1747,7 @@ const startRuntimeInternal = async (config, options = {}) => {
   const indexData = await loadIndex();
   const bundledRuntime = await resolvePythonRuntimeBundle(indexData);
   const runtimeCwd = bundledRuntime?.runtimeCwd || (await resolveRuntimeProjectRoot());
-  const condaRoot = getCondaRoot(tutorRoot);
+  const condaRoot = getCondaRoot();
   const condaEnvPython = getCondaEnvPython(condaRoot);
   const condaPythonExists = await pathExists(condaEnvPython);
   const pythonPath = runtimeConfig?.pythonPath
