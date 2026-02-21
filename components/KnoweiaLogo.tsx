@@ -5,7 +5,7 @@ interface KnoweiaLogoProps {
   alt?: string;
 }
 
-const logoUrl = new URL('../assets/logo.svg', import.meta.url).href;
+const logoUrl = new URL('../assets/icon.png', import.meta.url).href;
 
 const KnoweiaLogo: React.FC<KnoweiaLogoProps> = ({ className = '', alt = 'Knoweia logo' }) => {
   return <img src={logoUrl} alt={alt} className={className} draggable={false} />;
