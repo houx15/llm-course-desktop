@@ -43,7 +43,7 @@ const defaultSettings = () => ({
   rememberKeys: {},
   modelConfigs: {},
   activeProvider: 'gpt',
-  llmFormat: 'custom',
+  llmFormat: '',
   llmBaseUrl: '',
 });
 

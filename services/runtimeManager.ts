@@ -118,8 +118,10 @@ const loadRuntimeBootstrap = async () => {
   const model = modelConfig?.model || providerMeta.defaultModel;
   const keyResult = await window.tutorApp.getLlmKey(activeProvider);
 
-  // Prefer explicit user-configured format/baseUrl; fall back to per-provider defaults.
-  const llmFormat = (settings.llmFormat as RuntimeConfig['llmProvider']) || providerMeta.llmProvider;
+  // Derive LLM format from the provider mapping (source of truth).
+  // settings.llmFormat defaults to 'custom' for all new installs, which is wrong for 'gpt'
+  // (which needs 'openai'). Always use providerMeta.llmProvider so the correct client is used.
+  const llmFormat = providerMeta.llmProvider;
   const llmBaseUrl = settings.llmBaseUrl || providerMeta.baseUrl || '';
 
   return {
