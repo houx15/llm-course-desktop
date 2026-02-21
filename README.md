@@ -11,15 +11,14 @@ Electron desktop frontend for the Socratic multi-agent learning platform.
 
 ## Current State
 
-Core Step 3 integration is partially implemented:
+Core integration is complete:
 
 - Backend auth/course/update/progress/analytics API integration is wired.
 - Sidecar chat streaming is wired to `/api/session/*` with event normalization.
-- Session creation now sends full `chapter_id` (course-scoped) to match demo orchestrator lookup.
+- Session creation sends full `chapter_id` (course-scoped) to match demo orchestrator lookup.
 - Bundle update/install uses backend check APIs and checksum verification.
-- IPC foundation exists for settings/auth/secrets/backend/sync.
-
-The app builds, but it still needs hardening work before being considered stable for regular use.
+- **Miniconda-based sidecar runtime**: on first launch the app automatically downloads Miniconda from Tsinghua mirror, installs it silently, creates a `sidecar` conda env (Python 3.12), downloads the sidecar code bundle from the backend, and pip-installs its requirements. All stages are cached — subsequent launches skip completed steps in under a second. A staged Chinese progress overlay (`SidecarDownloadProgress`) covers the full startup sequence.
+- LLM provider/key/model are configured by the user in desktop settings and passed to the sidecar at startup — no manual `.env` editing required.
 
 ## Run (Dev)
 
@@ -28,11 +27,11 @@ The app builds, but it still needs hardening work before being considered stable
 2. Run renderer + Electron:
    `npm run dev:desktop`
 
-Optional env vars:
+Optional env vars (overrides in-app settings):
 
 - `TUTOR_BACKEND_URL` (default: `http://47.93.151.131:10723`)
 - `TUTOR_SIDECAR_URL` (default: `http://127.0.0.1:8000`)
-- `TUTOR_PYTHON` (default: `python`)
+- `TUTOR_PYTHON` (override: uses conda env Python by default after first-launch setup)
 
 ## Auth Flow
 
@@ -52,7 +51,7 @@ Optional env vars:
 - [x] Remove hardcoded legacy chapter session bootstrap in secondary chat (`components/ChatPanel.tsx`) and bind to active chapter context.
 - [x] Unify sidecar contract between docs and implementation by updating draft docs to the current `/api/session/*` integration + renderer event normalization.
 - [x] Add startup/session preflight checks against sidecar `/health` + `/api/contract` before session creation.
-- [ ] Publish a real `python_runtime` bundle release (with embedded python + sidecar entry) and return it from backend update APIs for packaged clients.
+- [x] Implement Miniconda-based automatic sidecar runtime setup with staged progress UI (replaces manual python_runtime bundle with embedded Python).
 
 ### P1 (stability/reliability)
 
