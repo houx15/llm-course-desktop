@@ -10,11 +10,16 @@ import { createHash, randomUUID } from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Pin userData to ~/.knoweia so paths are identical in dev and prod,
+// never contain spaces, and everything lives in one predictable place.
+// Must be called before any app.getPath('userData') usage.
+app.setPath('userData', path.join(os.homedir(), '.knoweia'));
+
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:3000';
 const appRoot = path.join(__dirname, '..');
 const appIconPath = path.join(appRoot, 'assets', 'icon.png');
-const userDataDir = app.getPath('userData');
+const userDataDir = app.getPath('userData'); // now always ~/.knoweia
 const settingsFilePath = path.join(userDataDir, 'settings.json');
 const authFilePath = path.join(userDataDir, 'auth.store.json');
 const secretsFilePath = path.join(userDataDir, 'secrets.store.json');
@@ -854,13 +859,14 @@ const pathExists = async (candidatePath) => {
 
 // Conda must live in a space-free path — pip refuses to install into directories with spaces.
 // macOS userData is ~/Library/Application Support/... (has space), so we use home dir instead.
+// Conda lives alongside all other app data in userData (~/.knoweia/miniconda).
+// On Windows, %APPDATA% can have spaces; use %LOCALAPPDATA% as a safer fallback.
 const getCondaRoot = () => {
   if (process.platform === 'win32') {
-    // %LOCALAPPDATA% (e.g. C:\Users\Name\AppData\Local) avoids spaces more reliably than home
-    const base = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local');
+    const base = process.env.LOCALAPPDATA || userDataDir;
     return path.join(base, 'knoweia', 'miniconda');
   }
-  return path.join(app.getPath('home'), '.knoweia', 'miniconda');
+  return path.join(userDataDir, 'miniconda');
 };
 
 const getCondaBin = (condaRoot) => process.platform === 'win32'
