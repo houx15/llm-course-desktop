@@ -841,6 +841,15 @@ const getPlatformScopeId = () => {
 // Miniconda runtime management
 // ---------------------------------------------------------------------------
 
+const pathExists = async (candidatePath) => {
+  try {
+    await fs.access(candidatePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const getCondaRoot = (tutorRoot) => path.join(tutorRoot, 'miniconda');
 
 const getCondaBin = (condaRoot) => process.platform === 'win32'
@@ -860,11 +869,16 @@ const runSubprocess = (executable, args, options = {}) => new Promise((resolve, 
     stdio: ['ignore', 'pipe', 'pipe'],
     ...options,
   });
+  let stdout = '';
   let stderr = '';
+  child.stdout?.on('data', (d) => { stdout += d.toString(); });
   child.stderr?.on('data', (d) => { stderr += d.toString(); });
   child.on('close', (code) => {
-    if (code === 0) resolve({ code, stderr });
-    else reject(new Error(`${path.basename(executable)} exited ${code}: ${stderr.slice(-500)}`));
+    if (code === 0) resolve({ code, stdout, stderr });
+    else {
+      const output = [stderr, stdout].filter(Boolean).join('\n').slice(-800);
+      reject(new Error(`${path.basename(executable)} exited ${code}: ${output}`));
+    }
   });
   child.on('error', reject);
 });
@@ -926,27 +940,28 @@ const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
   }
 
   await fs.writeFile(installerPath, Buffer.concat(chunks));
-  sendProgress('installing_conda', { percent: 35, status: '正在安装 Python 环境...' });
+  try {
+    sendProgress('installing_conda', { percent: 35, status: '正在安装 Python 环境...' });
 
-  // Silent install
-  await ensureDir(condaRoot);
-  if (process.platform === 'win32') {
-    await runSubprocess(installerPath, ['/S', `/D=${condaRoot}`]);
-  } else {
-    await fs.chmod(installerPath, 0o755);
-    await runSubprocess('bash', [installerPath, '-b', '-p', condaRoot]);
+    // Silent install
+    await ensureDir(condaRoot);
+    if (process.platform === 'win32') {
+      await runSubprocess(installerPath, ['/S', `/D=${condaRoot}`]);
+    } else {
+      await fs.chmod(installerPath, 0o755);
+      await runSubprocess('bash', [installerPath, '-b', '-p', condaRoot]);
+    }
+
+    // Write .condarc to use Tsinghua channels
+    const condarc = [
+      'default_channels:',
+      ...runtimeConfig.conda_channels.map((ch) => `  - ${ch}`),
+      'show_channel_urls: true',
+    ].join('\n') + '\n';
+    await fs.writeFile(path.join(condaRoot, '.condarc'), condarc, 'utf8');
+  } finally {
+    await fs.unlink(installerPath).catch(() => {});
   }
-
-  // Write .condarc to use Tsinghua channels
-  const condarc = [
-    'default_channels:',
-    ...runtimeConfig.conda_channels.map((ch) => `  - ${ch}`),
-    'show_channel_urls: true',
-  ].join('\n') + '\n';
-  await fs.writeFile(path.join(condaRoot, '.condarc'), condarc, 'utf8');
-
-  // Clean up installer
-  await fs.unlink(installerPath).catch(() => {});
 
   sendProgress('installing_conda', { percent: 44, status: '正在安装 Python 环境...' });
 };
@@ -1039,17 +1054,18 @@ const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
 
   // 5. pip install requirements into the conda env
   const requirementsTxt = path.join(bundleRoot, 'requirements.txt');
-  if (await pathExists(requirementsTxt)) {
-    sendProgress('installing_deps', { percent: 70, status: '正在安装依赖包...' });
-    const pipBin = getCondaEnvPip(condaRoot);
-    await runSubprocess(pipBin, [
-      'install', '-r', requirementsTxt,
-      '--index-url', runtimeConfig.pip_index_url,
-      '--trusted-host', 'mirrors.tuna.tsinghua.edu.cn',
-      '--quiet',
-    ]);
-    sendProgress('installing_deps', { percent: 95, status: '正在安装依赖包...' });
+  if (!await pathExists(requirementsTxt)) {
+    throw new Error(`requirements.txt not found in sidecar bundle at ${requirementsTxt}`);
   }
+  sendProgress('installing_deps', { percent: 70, status: '正在安装依赖包...' });
+  const pipBin = getCondaEnvPip(condaRoot);
+  await runSubprocess(pipBin, [
+    'install', '-r', requirementsTxt,
+    '--index-url', runtimeConfig.pip_index_url,
+    '--trusted-host', 'mirrors.tuna.tsinghua.edu.cn',
+    '--quiet',
+  ]);
+  sendProgress('installing_deps', { percent: 95, status: '正在安装依赖包...' });
 };
 
 ipcMain.handle('sidecar:checkBundle', async () => {
@@ -1066,38 +1082,46 @@ ipcMain.handle('sidecar:checkBundle', async () => {
   return { installed: false, version: null, scopeId: null };
 });
 
+let _ensureReadyPromise = null;
+
 ipcMain.handle('sidecar:ensureReady', async () => {
-  const settings = await loadSettings();
-  const tutorRoot = getTutorRoot(settings);
-  const condaRoot = getCondaRoot(tutorRoot);
+  if (_ensureReadyPromise) return _ensureReadyPromise;
+  _ensureReadyPromise = (async () => {
+    const settings = await loadSettings();
+    const tutorRoot = getTutorRoot(settings);
+    const condaRoot = getCondaRoot(tutorRoot);
 
-  const sendProgress = (phase, progress) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('sidecar:download-progress', { phase, ...progress });
+    const sendProgress = (phase, progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('sidecar:download-progress', { phase, ...progress });
+      }
+    };
+
+    try {
+      sendProgress('checking', { percent: 0, status: '正在检查运行环境...' });
+
+      const runtimeConfig = await fetchRuntimeConfig();
+
+      // Stage 1: Miniconda installation (skipped if already present)
+      await ensureCondaInstalled(condaRoot, runtimeConfig, sendProgress);
+
+      // Stage 2: Conda sidecar env (skipped if already present)
+      await ensureCondaEnv(condaRoot, sendProgress);
+
+      // Stage 3: Sidecar code bundle + pip install (skipped if up to date)
+      await ensureSidecarCode(condaRoot, runtimeConfig, sendProgress);
+
+      sendProgress('done', { percent: 100, status: '准备就绪' });
+      return { ready: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sendProgress('error', { percent: 0, status: message });
+      return { ready: false, error: message };
     }
-  };
-
-  try {
-    sendProgress('checking', { percent: 0, status: '正在检查运行环境...' });
-
-    const runtimeConfig = await fetchRuntimeConfig();
-
-    // Stage 1: Miniconda installation (skipped if already present)
-    await ensureCondaInstalled(condaRoot, runtimeConfig, sendProgress);
-
-    // Stage 2: Conda sidecar env (skipped if already present)
-    await ensureCondaEnv(condaRoot, sendProgress);
-
-    // Stage 3: Sidecar code bundle + pip install (skipped if up to date)
-    await ensureSidecarCode(condaRoot, runtimeConfig, sendProgress);
-
-    sendProgress('done', { percent: 100, status: '准备就绪' });
-    return { ready: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    sendProgress('error', { percent: 0, status: message });
-    return { ready: false, error: message };
-  }
+  })().finally(() => {
+    _ensureReadyPromise = null;
+  });
+  return _ensureReadyPromise;
 });
 
 ipcMain.handle('bundles:getIndex', async () => {
@@ -1198,15 +1222,6 @@ const resolveBundlePath = async (type) => {
     return null;
   }
   return entries[0][1].path;
-};
-
-const pathExists = async (candidatePath) => {
-  try {
-    await fs.access(candidatePath);
-    return true;
-  } catch {
-    return false;
-  }
 };
 
 const readJsonIfExists = async (filePath) => {
