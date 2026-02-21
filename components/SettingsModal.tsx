@@ -29,8 +29,6 @@ type ProviderConfig = {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<'storage' | 'api'>('storage');
   const [storageRoot, setStorageRoot] = useState('');
-  const [backendBaseUrl, setBackendBaseUrl] = useState('');
-  const [sidecarBaseUrl, setSidecarBaseUrl] = useState('');
   const [rememberLogin, setRememberLogin] = useState(true);
 
   const [activeProviderId, setActiveProviderId] = useState('gemini');
@@ -47,8 +45,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const load = async () => {
       const settings = await window.tutorApp!.getSettings();
       setStorageRoot(settings.storageRoot || '');
-      setBackendBaseUrl(settings.backendBaseUrl || '');
-      setSidecarBaseUrl(settings.sidecarBaseUrl || '');
       setRememberLogin(settings.rememberLogin !== false);
       setActiveProviderId(settings.activeProvider || 'gemini');
 
@@ -118,8 +114,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
       await window.tutorApp.setSettings({
         storageRoot,
-        backendBaseUrl,
-        sidecarBaseUrl,
         rememberLogin,
         rememberKeys,
         modelConfigs,
@@ -199,26 +193,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     </button>
                   </div>
                   <p className="text-[10px] text-gray-400">本地 bundles/session/workspace 的根目录。</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Backend Base URL</label>
-                  <input
-                    type="text"
-                    value={backendBaseUrl}
-                    onChange={(e) => setBackendBaseUrl(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono text-gray-700"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Sidecar Base URL</label>
-                  <input
-                    type="text"
-                    value={sidecarBaseUrl}
-                    onChange={(e) => setSidecarBaseUrl(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono text-gray-700"
-                  />
                 </div>
 
                 <label className="flex items-center gap-2 text-sm text-gray-600">

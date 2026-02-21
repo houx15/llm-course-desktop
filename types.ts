@@ -117,8 +117,6 @@ declare global {
       openExternal: (url: string) => Promise<boolean>;
       getSettings: () => Promise<{
         storageRoot: string;
-        backendBaseUrl: string;
-        sidecarBaseUrl: string;
         rememberLogin: boolean;
         rememberKeys: Record<string, boolean>;
         modelConfigs: Record<string, { model: string }>;
@@ -126,8 +124,6 @@ declare global {
       }>;
       setSettings: (patch: Partial<{
         storageRoot: string;
-        backendBaseUrl: string;
-        sidecarBaseUrl: string;
         rememberLogin: boolean;
         rememberKeys: Record<string, boolean>;
         modelConfigs: Record<string, { model: string }>;
