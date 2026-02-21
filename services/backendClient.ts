@@ -13,8 +13,7 @@ export class BackendError extends Error {
 }
 
 const WEB_AUTH_STORAGE_KEY = 'tutor.web.auth.v1';
-const WEB_BACKEND_URL_STORAGE_KEY = 'tutor.web.backend_base_url';
-const DEFAULT_WEB_BACKEND_BASE_URL = (import.meta as any)?.env?.VITE_BACKEND_URL || 'http://47.93.151.131:10723';
+const WEB_BACKEND_BASE_URL = ((import.meta as any)?.env?.VITE_BACKEND_URL || 'http://47.93.151.131:10723').replace(/\/$/, '');
 
 const parseErrorMessage = (data: any): { message: string; code?: string } => {
   if (data?.error?.message) {
@@ -38,17 +37,6 @@ const parseResponseBody = async (response: Response) => {
     return response.json().catch(() => ({}));
   }
   return response.text().catch(() => '');
-};
-
-const normalizeBaseUrl = (value: string) => String(value || '').replace(/\/+$/, '');
-
-const getWebBackendBaseUrl = () => {
-  try {
-    const fromStorage = window.localStorage.getItem(WEB_BACKEND_URL_STORAGE_KEY) || '';
-    return normalizeBaseUrl(fromStorage || DEFAULT_WEB_BACKEND_BASE_URL);
-  } catch {
-    return normalizeBaseUrl(DEFAULT_WEB_BACKEND_BASE_URL);
-  }
 };
 
 const getWebAccessToken = () => {
@@ -77,7 +65,7 @@ export const backendClient = {
         }
       }
 
-      const response = await fetch(`${getWebBackendBaseUrl()}${path}`, {
+      const response = await fetch(`${WEB_BACKEND_BASE_URL}${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
