@@ -34,13 +34,15 @@ const DEFAULT_CODE_TIMEOUT_MS = 60_000;
 
 const defaultSettings = () => ({
   storageRoot: app.getPath('userData'),
-  backendBaseUrl: process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723',
-  sidecarBaseUrl: process.env.TUTOR_SIDECAR_URL || 'http://127.0.0.1:8000',
   rememberLogin: true,
   rememberKeys: {},
   modelConfigs: {},
   activeProvider: 'gpt',
 });
+
+// Fixed URL constants — not user-configurable
+const BACKEND_BASE_URL = process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723';
+const SIDECAR_BASE_URL = process.env.TUTOR_SIDECAR_URL || 'http://127.0.0.1:8000';
 
 const defaultAuthState = () => ({
   deviceId: `desktop-${randomUUID()}`,
@@ -260,7 +262,7 @@ const refreshAccessTokenIfNeeded = async (settings, auth) => {
   }
 
   refreshPromise = (async () => {
-    const refreshUrl = normalizeUrl(settings.backendBaseUrl, '/v1/auth/refresh');
+    const refreshUrl = normalizeUrl(BACKEND_BASE_URL, '/v1/auth/refresh');
     const refreshResponse = await executeBackendFetch({
       url: refreshUrl,
       method: 'POST',
@@ -304,7 +306,7 @@ const requestBackend = async (payload = {}) => {
   const auth = await loadAuthStore();
 
   const method = String(payload.method || 'GET').toUpperCase();
-  const url = normalizeUrl(settings.backendBaseUrl, payload.path || payload.url);
+  const url = normalizeUrl(BACKEND_BASE_URL, payload.path || payload.url);
   const headers = {
     ...(payload.headers || {}),
   };
@@ -1715,8 +1717,7 @@ const scheduleRuntimeAutoRestart = () => {
 const startRuntimeInternal = async (config, options = {}) => {
   const runtimeConfig = config || {};
   if (runtimeProcess) {
-    const settings = await loadSettings();
-    const preflight = await waitForSidecarPreflight(settings.sidecarBaseUrl, 1200);
+    const preflight = await waitForSidecarPreflight(SIDECAR_BASE_URL, 1200);
     if (preflight.ok) {
       return {
         started: true,
@@ -1818,7 +1819,7 @@ const startRuntimeInternal = async (config, options = {}) => {
     }
   });
 
-  const preflight = await waitForSidecarPreflight(settings.sidecarBaseUrl, 12000);
+  const preflight = await waitForSidecarPreflight(SIDECAR_BASE_URL, 12000);
   if (!preflight.ok) {
     stopRuntimeProcess(false);
     return {
@@ -1852,8 +1853,7 @@ ipcMain.handle('runtime:stop', async () => {
 });
 
 ipcMain.handle('runtime:health', async () => {
-  const settings = await loadSettings();
-  const baseUrl = settings.sidecarBaseUrl || 'http://127.0.0.1:8000';
+  const baseUrl = SIDECAR_BASE_URL;
   try {
     const response = await fetch(`${String(baseUrl).replace(/\/+$/, '')}/health`);
     if (!response.ok) {
@@ -1872,9 +1872,7 @@ ipcMain.handle('runtime:health', async () => {
 });
 
 ipcMain.handle('runtime:preflight', async () => {
-  const settings = await loadSettings();
-  const baseUrl = settings.sidecarBaseUrl || 'http://127.0.0.1:8000';
-  const preflight = await waitForSidecarPreflight(baseUrl, 2500);
+  const preflight = await waitForSidecarPreflight(SIDECAR_BASE_URL, 2500);
   if (preflight.ok) {
     return {
       ok: true,
@@ -1900,8 +1898,7 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
     throw new Error('Missing chapterId');
   }
 
-  const settings = await loadSettings();
-  const baseUrl = String(settings.sidecarBaseUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+  const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
   const desktopContext = await buildSidecarSessionContext(chapterId);
 
   const response = await fetch(`${baseUrl}/api/session/new`, {
