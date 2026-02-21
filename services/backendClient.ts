@@ -13,7 +13,9 @@ export class BackendError extends Error {
 }
 
 const WEB_AUTH_STORAGE_KEY = 'tutor.web.auth.v1';
-const WEB_BACKEND_BASE_URL = ((import.meta as any)?.env?.VITE_BACKEND_URL || 'http://47.93.151.131:10723').replace(/\/$/, '');
+// Used only in the web/browser fallback path (non-Electron). In Electron, all
+// backend requests go through the IPC bridge in main.mjs, which reads TUTOR_BACKEND_URL.
+const WEB_BACKEND_BASE_URL = (import.meta.env.VITE_BACKEND_URL || 'http://47.93.151.131:10723').replace(/\/$/, '');
 
 const parseErrorMessage = (data: any): { message: string; code?: string } => {
   if (data?.error?.message) {
