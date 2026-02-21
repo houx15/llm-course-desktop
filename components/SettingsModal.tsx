@@ -156,7 +156,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               }`}
             >
               <HardDrive size={16} />
-              存储与连接
+              存储
             </button>
             <button
               onClick={() => setActiveTab('api')}
@@ -173,7 +173,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             {activeTab === 'storage' && (
               <div className="space-y-6">
                 <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <Database size={16} className="text-blue-500" /> 本地存储与服务地址
+                  <Database size={16} className="text-blue-500" /> 本地存储
                 </h3>
 
                 <div className="space-y-1.5">
