@@ -1067,29 +1067,9 @@ ipcMain.handle('sidecar:checkBundle', async () => {
 });
 
 ipcMain.handle('sidecar:ensureReady', async () => {
-  const indexData = await loadIndex();
-  const pythonRuntime = indexData?.python_runtime || {};
-  const entries = Object.entries(pythonRuntime).filter(([, entry]) => entry?.path);
-  const platformScopeId = getPlatformScopeId();
-
-  // Validate existing installs: scan all entries, keep first valid one, prune stale
-  let existingVersion = '';
-  let pruned = false;
-  for (const [scopeId, entry] of entries) {
-    const bundlePath = String(entry.path || '');
-    if (bundlePath && (await pathExists(bundlePath))) {
-      if (!existingVersion) {
-        existingVersion = String(entry.version || '');
-      }
-    } else {
-      delete pythonRuntime[scopeId];
-      pruned = true;
-    }
-  }
-  if (pruned) {
-    indexData.python_runtime = pythonRuntime;
-    await saveIndex(indexData);
-  }
+  const settings = await loadSettings();
+  const tutorRoot = getTutorRoot(settings);
+  const condaRoot = getCondaRoot(tutorRoot);
 
   const sendProgress = (phase, progress) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1098,82 +1078,23 @@ ipcMain.handle('sidecar:ensureReady', async () => {
   };
 
   try {
-    sendProgress('checking', { percent: 0, status: 'Checking for sidecar bundle...' });
+    sendProgress('checking', { percent: 0, status: '正在检查运行环境...' });
 
-    const installedVersions = {
-      app_agents: indexData?.app_agents?.core?.version || '',
-      experts_shared: indexData?.experts_shared?.shared?.version || '',
-      python_runtime: existingVersion,
-    };
+    const runtimeConfig = await fetchRuntimeConfig();
 
-    const checkResult = await requestBackend({
-      method: 'POST',
-      path: '/v1/updates/check-app',
-      body: {
-        desktop_version: app.getVersion() || '0.1.0',
-        sidecar_version: existingVersion || '0.0.0',
-        installed: installedVersions,
-        platform_scope: platformScopeId,
-      },
-      withAuth: true,
-    });
+    // Stage 1: Miniconda installation (skipped if already present)
+    await ensureCondaInstalled(condaRoot, runtimeConfig, sendProgress);
 
-    if (!checkResult.ok) {
-      // If we already have a valid install, tolerate backend failure
-      if (existingVersion) {
-        return { ready: true, alreadyInstalled: true };
-      }
-      const msg = `Update check failed (${checkResult.status})`;
-      sendProgress('error', { percent: 0, status: msg });
-      return { ready: false, error: msg };
-    }
+    // Stage 2: Conda sidecar env (skipped if already present)
+    await ensureCondaEnv(condaRoot, sendProgress);
 
-    const requiredReleases = checkResult.data?.required || [];
-    const optionalReleases = checkResult.data?.optional || [];
-    const allReleases = [...requiredReleases, ...optionalReleases];
-    const sidecarRelease = allReleases.find(
-      (r) => r.bundle_type === 'python_runtime'
-    );
+    // Stage 3: Sidecar code bundle + pip install (skipped if up to date)
+    await ensureSidecarCode(condaRoot, runtimeConfig, sendProgress);
 
-    // No update needed and we have a valid install
-    if (!sidecarRelease && existingVersion) {
-      return { ready: true, alreadyInstalled: true };
-    }
-
-    if (!sidecarRelease) {
-      const msg = 'No sidecar bundle available from server';
-      sendProgress('error', { percent: 0, status: msg });
-      return { ready: false, error: msg };
-    }
-
-    sendProgress('downloading', { percent: 0, status: 'Downloading learning engine...' });
-
-    let downloadComplete = false;
-    const onDownloadProgress = (progress) => {
-      if (!downloadComplete) {
-        sendProgress('downloading', {
-          percent: progress.percent,
-          bytesDownloaded: progress.bytesDownloaded,
-          totalBytes: progress.totalBytes,
-          status: 'Downloading learning engine...',
-        });
-        if (progress.percent >= 100) {
-          downloadComplete = true;
-          sendProgress('installing', { percent: 95, status: 'Installing...' });
-        }
-      }
-    };
-
-    await installBundleRelease(sidecarRelease, onDownloadProgress);
-    if (!downloadComplete) {
-      // Server returned no Content-Length so percent never reached 100
-      sendProgress('installing', { percent: 95, status: 'Installing...' });
-    }
-    sendProgress('done', { percent: 100, status: 'Ready' });
-
-    return { ready: true, alreadyInstalled: false };
+    sendProgress('done', { percent: 100, status: '准备就绪' });
+    return { ready: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = error instanceof Error ? error.message : String(error);
     sendProgress('error', { percent: 0, status: message });
     return { ready: false, error: message };
   }
@@ -1801,7 +1722,14 @@ const startRuntimeInternal = async (config, options = {}) => {
   const indexData = await loadIndex();
   const bundledRuntime = await resolvePythonRuntimeBundle(indexData);
   const runtimeCwd = bundledRuntime?.runtimeCwd || (await resolveRuntimeProjectRoot());
-  const pythonPath = runtimeConfig?.pythonPath || process.env.TUTOR_PYTHON || bundledRuntime?.pythonPath || 'python';
+  const condaRoot = getCondaRoot(tutorRoot);
+  const condaEnvPython = getCondaEnvPython(condaRoot);
+  const condaPythonExists = await pathExists(condaEnvPython);
+  const pythonPath = runtimeConfig?.pythonPath
+    || process.env.TUTOR_PYTHON
+    || (condaPythonExists ? condaEnvPython : '')
+    || bundledRuntime?.pythonPath
+    || 'python';
   const runtimeSource = bundledRuntime?.runtimeCwd ? `python_runtime:${bundledRuntime.scopeId}` : 'local_demo';
   const pythonSource = runtimeConfig?.pythonPath
     ? 'explicit'
