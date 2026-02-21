@@ -7,7 +7,7 @@ interface SettingsModalProps {
 }
 
 const PROVIDERS = [
-  { id: 'gemini', name: 'Google Gemini', defaultModel: 'gemini-3-flash-preview', helpUrl: 'https://aistudio.google.com/app/apikey' },
+  { id: 'gemini', name: 'Google Gemini', defaultModel: 'gemini-2.0-flash', helpUrl: 'https://aistudio.google.com/app/apikey' },
   { id: 'gpt', name: 'OpenAI GPT', defaultModel: 'gpt-4o', helpUrl: 'https://platform.openai.com/api-keys' },
   { id: 'deepseek', name: 'DeepSeek', defaultModel: 'deepseek-chat', helpUrl: 'https://platform.deepseek.com/api_keys' },
   {
@@ -31,7 +31,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [storageRoot, setStorageRoot] = useState('');
   const [rememberLogin, setRememberLogin] = useState(true);
 
-  const [activeProviderId, setActiveProviderId] = useState('gemini');
+  const [activeProviderId, setActiveProviderId] = useState('gpt');
   const [configs, setConfigs] = useState<Record<string, ProviderConfig>>({});
   const [showKey, setShowKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

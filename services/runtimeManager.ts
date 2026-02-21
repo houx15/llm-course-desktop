@@ -51,13 +51,13 @@ const mapProvider = (providerId: string) => {
       return { llmProvider: 'custom' as const, defaultModel: 'moonshot-v1-8k', baseUrl: 'https://api.moonshot.cn/v1' };
     case 'gemini':
     default:
-      return { llmProvider: 'custom' as const, defaultModel: 'gemini-3-flash-preview', baseUrl: '' };
+      return { llmProvider: 'custom' as const, defaultModel: 'gemini-2.0-flash', baseUrl: '' };
   }
 };
 
 const SIDECAR_BASE_URL = 'http://127.0.0.1:8000';
 
-const normalizeBaseUrl = (url: string) => String(url || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '');
 
 const parseSsePayload = (raw: string): RawStreamEvent | null => {
   const value = raw.trim();

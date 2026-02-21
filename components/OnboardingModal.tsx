@@ -9,7 +9,7 @@ interface Provider {
 }
 
 const PROVIDERS: Provider[] = [
-  { id: 'gemini',   name: 'Google Gemini',      defaultModel: 'gemini-3-flash-preview',  helpUrl: 'https://aistudio.google.com/app/apikey' },
+  { id: 'gemini',   name: 'Google Gemini',      defaultModel: 'gemini-2.0-flash',  helpUrl: 'https://aistudio.google.com/app/apikey' },
   { id: 'gpt',      name: 'OpenAI GPT',          defaultModel: 'gpt-4o',                    helpUrl: 'https://platform.openai.com/api-keys' },
   { id: 'deepseek', name: 'DeepSeek',            defaultModel: 'deepseek-chat',             helpUrl: 'https://platform.deepseek.com/api_keys' },
   { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',             helpUrl: 'https://help.aliyun.com/zh/dashscope/developer-reference/activate-dashscope-and-create-an-api-key' },
@@ -27,7 +27,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
   const [showKey, setShowKey] = useState(false);
   const [storageRoot, setStorageRoot] = useState('');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   // Load current storageRoot default on mount
   useEffect(() => {
@@ -57,20 +57,21 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
   const handleSubmit = async () => {
     if (!apiKey.trim() || saving || !window.tutorApp) return;
     setSaving(true);
-    setError('');
+    setError(null);
     try {
+      const currentSettings = await window.tutorApp.getSettings();
       // Save LLM key to secure storage
       await window.tutorApp.saveLlmKey(providerId, apiKey.trim());
       // Save settings: activeProvider, storageRoot, rememberKeys, modelConfigs
       await window.tutorApp.setSettings({
         activeProvider: providerId,
         storageRoot,
-        rememberKeys: { [providerId]: true },
-        modelConfigs: { [providerId]: { model: provider.defaultModel } },
+        rememberKeys: { ...currentSettings.rememberKeys, [providerId]: true },
+        modelConfigs: { ...currentSettings.modelConfigs, [providerId]: { model: provider.defaultModel } },
       });
       onComplete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败，请重试');
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setSaving(false);
     }
