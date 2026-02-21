@@ -8,6 +8,7 @@ import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
 import { CodeEditorPanel } from './components/CodeEditor';
 import { OutputChunk } from './components/CodeEditor';
+import { OnboardingModal } from './components/OnboardingModal';
 import { authService } from './services/authService';
 import { courseService } from './services/courseService';
 import { updateManager } from './services/updateManager';
@@ -21,6 +22,9 @@ import { Download, Terminal, ChevronUp } from 'lucide-react';
 const App: React.FC = () => {
   // Auth State
   const [user, setUser] = useState<User | null>(null);
+
+  // Onboarding State
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // App View State
   const [view, setView] = useState<'dashboard' | 'course'>('dashboard');
@@ -208,48 +212,69 @@ const App: React.FC = () => {
 
   }, []);
 
+  const startupAfterLogin = async () => {
+    try {
+      await updateManager.syncAppBundles();
+    } catch (err) {
+      console.warn('App update check failed:', err);
+    }
+
+    // Check whether an LLM key is configured for the active provider.
+    // If not, show the onboarding modal instead of starting the runtime.
+    if (window.tutorApp) {
+      try {
+        const settings = await window.tutorApp.getSettings();
+        const activeProvider = settings.activeProvider || 'gpt';
+        const keyResult = await window.tutorApp.getLlmKey(activeProvider);
+        if (!keyResult.key) {
+          setShowOnboarding(true);
+          return;
+        }
+      } catch (err) {
+        console.warn('LLM key check failed, proceeding without onboarding gate:', err);
+      }
+    }
+
+    // Always show overlay during sidecar setup+start.
+    // runtimeManager.start() handles sidecar readiness checks.
+    setShowSidecarDownload(true);
+    try {
+      const runtimeResult = await runtimeManager.start();
+      if (!runtimeResult.started) {
+        setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
+        if (runtimeResult.failureStage !== 'sidecar') {
+          setShowSidecarDownload(false);
+        }
+        // Keep overlay visible for sidecar setup/download failures so retry remains accessible
+        return;
+      } else {
+        setRuntimeNotice('');
+        setShowSidecarDownload(false);
+      }
+    } catch (err) {
+      console.warn('Runtime start failed:', err);
+      setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
+      setShowSidecarDownload(false);
+    }
+
+    try {
+      await syncQueue.flushAll();
+    } catch (err) {
+      console.warn('Initial sync flush failed:', err);
+    }
+  };
+
+  const handleOnboardingComplete = () => {
+    setShowOnboarding(false);
+    startupAfterLogin();
+  };
+
   useEffect(() => {
     if (!user) {
       return;
     }
 
-    const syncOnLogin = async () => {
-      try {
-        await updateManager.syncAppBundles();
-      } catch (err) {
-        console.warn('App update check failed:', err);
-      }
-
-      // Always show overlay during sidecar setup+start.
-      // runtimeManager.start() handles sidecar readiness checks.
-      setShowSidecarDownload(true);
-      try {
-        const runtimeResult = await runtimeManager.start();
-        if (!runtimeResult.started) {
-          setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
-          if (runtimeResult.failureStage !== 'sidecar') {
-            setShowSidecarDownload(false);
-          }
-          // Keep overlay visible for sidecar setup/download failures so retry remains accessible
-          return;
-        } else {
-          setRuntimeNotice('');
-          setShowSidecarDownload(false);
-        }
-      } catch (err) {
-        console.warn('Runtime start failed:', err);
-        setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
-        setShowSidecarDownload(false);
-      }
-
-      try {
-        await syncQueue.flushAll();
-      } catch (err) {
-        console.warn('Initial sync flush failed:', err);
-      }
-    };
-
-    syncOnLogin();
+    startupAfterLogin();
   }, [user]);
 
   useEffect(() => {
@@ -454,26 +479,35 @@ const App: React.FC = () => {
   // Render Dashboard
   if (view === 'dashboard') {
      return (
-        <div className="flex flex-col h-screen bg-gray-50 font-sans text-gray-900">
-            <TopBar user={user} onLogout={handleLogout} />
-            {sidecarOverlay}
-            {runtimeNotice && (
-              <div className="px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200">
-                本地运行时异常：{runtimeNotice}
-              </div>
-            )}
-            <Dashboard 
-                user={user} 
-                courses={myCourses} 
-                onAddCourse={handleAddCourse}
-                onSelectCourse={handleSelectCourse}
-            />
-        </div>
+        <>
+          {showOnboarding && (
+            <OnboardingModal onComplete={handleOnboardingComplete} />
+          )}
+          <div className="flex flex-col h-screen bg-gray-50 font-sans text-gray-900">
+              <TopBar user={user} onLogout={handleLogout} />
+              {sidecarOverlay}
+              {runtimeNotice && (
+                <div className="px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200">
+                  本地运行时异常：{runtimeNotice}
+                </div>
+              )}
+              <Dashboard
+                  user={user}
+                  courses={myCourses}
+                  onAddCourse={handleAddCourse}
+                  onSelectCourse={handleSelectCourse}
+              />
+          </div>
+        </>
      );
   }
 
   // Render Course Interface
   return (
+    <>
+      {showOnboarding && (
+        <OnboardingModal onComplete={handleOnboardingComplete} />
+      )}
     <div className="flex flex-col h-screen bg-white overflow-hidden font-sans text-gray-900">
       <TopBar
         user={user}
@@ -640,6 +674,7 @@ const App: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
