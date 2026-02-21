@@ -960,7 +960,7 @@ const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
       await runSubprocess(installerPath, ['/S', `/D=${condaRoot}`]);
     } else {
       await fs.chmod(installerPath, 0o755);
-      await runSubprocess('bash', [installerPath, '-b', '-p', condaRoot]);
+      await runSubprocess('bash', [installerPath, '-b', '-u', '-p', condaRoot]);
     }
 
     // Write .condarc to use Tsinghua channels
