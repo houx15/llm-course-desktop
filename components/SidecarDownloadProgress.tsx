@@ -2,7 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, AlertCircle, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 export interface SidecarDownloadState {
-  phase: 'checking' | 'downloading' | 'installing' | 'done' | 'error';
+  phase:
+    | 'checking'
+    | 'downloading_conda'
+    | 'installing_conda'
+    | 'creating_env'
+    | 'downloading_sidecar'
+    | 'installing_deps'
+    | 'done'
+    | 'error';
   percent: number;
   bytesDownloaded?: number;
   totalBytes?: number;
@@ -20,11 +28,14 @@ const formatBytes = (bytes: number) => {
 };
 
 const phaseLabel: Record<string, string> = {
-  checking: '正在检查学习引擎...',
-  downloading: '正在下载学习引擎...',
-  installing: '正在安装...',
-  done: '准备就绪',
-  error: '出现错误',
+  checking:            '正在检查运行环境...',
+  downloading_conda:   '正在下载 Python 环境 (Miniconda)...',
+  installing_conda:    '正在安装 Python 环境...',
+  creating_env:        '正在创建运行环境...',
+  downloading_sidecar: '正在下载学习引擎...',
+  installing_deps:     '正在安装依赖包 (首次约需数分钟)...',
+  done:                '准备就绪',
+  error:               '出现错误',
 };
 
 const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRetry }) => {
@@ -89,7 +100,7 @@ const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRet
             </div>
             <div className="flex justify-between mt-2 text-xs text-gray-400">
               <span>
-                {state.phase === 'downloading' && state.bytesDownloaded && state.totalBytes
+                {(state.phase === 'downloading_conda' || state.phase === 'downloading_sidecar') && state.bytesDownloaded && state.totalBytes
                   ? `${formatBytes(state.bytesDownloaded)} / ${formatBytes(state.totalBytes)}`
                   : state.status}
               </span>

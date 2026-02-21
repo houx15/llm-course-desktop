@@ -227,7 +227,7 @@ declare global {
         error?: string;
       }>;
       onSidecarDownloadProgress: (callback: (payload: {
-        phase: 'checking' | 'downloading' | 'installing' | 'done' | 'error';
+        phase: 'checking' | 'downloading_conda' | 'installing_conda' | 'creating_env' | 'downloading_sidecar' | 'installing_deps' | 'done' | 'error';
         percent: number;
         bytesDownloaded?: number;
         totalBytes?: number;
