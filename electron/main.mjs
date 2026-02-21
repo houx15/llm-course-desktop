@@ -837,6 +837,51 @@ const getPlatformScopeId = () => {
   return `py312-${platform}-${arch}`;
 };
 
+// ---------------------------------------------------------------------------
+// Miniconda runtime management
+// ---------------------------------------------------------------------------
+
+const getCondaRoot = (tutorRoot) => path.join(tutorRoot, 'miniconda');
+
+const getCondaBin = (condaRoot) => process.platform === 'win32'
+  ? path.join(condaRoot, 'Scripts', 'conda.exe')
+  : path.join(condaRoot, 'bin', 'conda');
+
+const getCondaEnvPython = (condaRoot) => process.platform === 'win32'
+  ? path.join(condaRoot, 'envs', 'sidecar', 'Scripts', 'python.exe')
+  : path.join(condaRoot, 'envs', 'sidecar', 'bin', 'python3');
+
+const getCondaEnvPip = (condaRoot) => process.platform === 'win32'
+  ? path.join(condaRoot, 'envs', 'sidecar', 'Scripts', 'pip.exe')
+  : path.join(condaRoot, 'envs', 'sidecar', 'bin', 'pip');
+
+const runSubprocess = (executable, args, options = {}) => new Promise((resolve, reject) => {
+  const child = spawn(executable, args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    ...options,
+  });
+  let stderr = '';
+  child.stderr?.on('data', (d) => { stderr += d.toString(); });
+  child.on('close', (code) => {
+    if (code === 0) resolve({ code, stderr });
+    else reject(new Error(`${path.basename(executable)} exited ${code}: ${stderr.slice(-500)}`));
+  });
+  child.on('error', reject);
+});
+
+const fetchRuntimeConfig = async () => {
+  const platformScope = getPlatformScopeId();
+  const result = await requestBackend({
+    method: 'GET',
+    path: `/v1/updates/runtime-config?platform_scope=${encodeURIComponent(platformScope)}`,
+    withAuth: true,
+  });
+  if (!result.ok) {
+    throw new Error(`Failed to fetch runtime config (${result.status})`);
+  }
+  return result.data;
+};
+
 ipcMain.handle('sidecar:checkBundle', async () => {
   const indexData = await loadIndex();
   const pythonRuntime = indexData?.python_runtime || {};
