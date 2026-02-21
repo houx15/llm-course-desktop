@@ -882,6 +882,93 @@ const fetchRuntimeConfig = async () => {
   return result.data;
 };
 
+const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
+  const condaBin = getCondaBin(condaRoot);
+  if (await pathExists(condaBin)) {
+    return; // already installed
+  }
+
+  // Download installer
+  const installerUrl = runtimeConfig.conda_installer_url;
+  const ext = process.platform === 'win32' ? '.exe' : '.sh';
+  const installerPath = path.join(os.tmpdir(), `miniconda-installer-${Date.now()}${ext}`);
+
+  sendProgress('downloading_conda', { percent: 5, status: '正在下载 Python 环境...' });
+
+  const response = await fetch(installerUrl);
+  if (!response.ok) {
+    throw new Error(`Miniconda download failed (${response.status}): ${installerUrl}`);
+  }
+
+  const totalBytes = Number(response.headers.get('content-length') || 0);
+  const chunks = [];
+  let bytesDownloaded = 0;
+
+  if (response.body) {
+    const reader = response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(Buffer.from(value));
+      bytesDownloaded += value.length;
+      const rawPercent = totalBytes > 0 ? (bytesDownloaded / totalBytes) : 0;
+      const displayPercent = Math.round(5 + rawPercent * 28);
+      sendProgress('downloading_conda', {
+        percent: displayPercent,
+        bytesDownloaded,
+        totalBytes,
+        status: '正在下载 Python 环境...',
+      });
+    }
+  } else {
+    const data = Buffer.from(await response.arrayBuffer());
+    chunks.push(data);
+  }
+
+  await fs.writeFile(installerPath, Buffer.concat(chunks));
+  sendProgress('installing_conda', { percent: 35, status: '正在安装 Python 环境...' });
+
+  // Silent install
+  await ensureDir(condaRoot);
+  if (process.platform === 'win32') {
+    await runSubprocess(installerPath, ['/S', `/D=${condaRoot}`]);
+  } else {
+    await fs.chmod(installerPath, 0o755);
+    await runSubprocess('bash', [installerPath, '-b', '-p', condaRoot]);
+  }
+
+  // Write .condarc to use Tsinghua channels
+  const condarc = [
+    'default_channels:',
+    ...runtimeConfig.conda_channels.map((ch) => `  - ${ch}`),
+    'show_channel_urls: true',
+  ].join('\n') + '\n';
+  await fs.writeFile(path.join(condaRoot, '.condarc'), condarc, 'utf8');
+
+  // Clean up installer
+  await fs.unlink(installerPath).catch(() => {});
+
+  sendProgress('installing_conda', { percent: 44, status: '正在安装 Python 环境...' });
+};
+
+const ensureCondaEnv = async (condaRoot, sendProgress) => {
+  const envPython = getCondaEnvPython(condaRoot);
+  if (await pathExists(envPython)) {
+    return; // env already exists
+  }
+
+  sendProgress('creating_env', { percent: 45, status: '正在创建运行环境...' });
+
+  const condaBin = getCondaBin(condaRoot);
+  await runSubprocess(condaBin, [
+    'create', '-n', 'sidecar', 'python=3.12', '--yes', '--quiet',
+    '--override-channels',
+    '--channel', 'https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main',
+  ]);
+
+  sendProgress('creating_env', { percent: 54, status: '正在创建运行环境...' });
+};
+
 ipcMain.handle('sidecar:checkBundle', async () => {
   const indexData = await loadIndex();
   const pythonRuntime = indexData?.python_runtime || {};
