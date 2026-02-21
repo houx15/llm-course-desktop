@@ -197,6 +197,14 @@ const App: React.FC = () => {
     };
   }, [isResizingEditor, currentChapter?.id]);
 
+  // Forward sidecar stderr to browser DevTools console (dev visibility).
+  useEffect(() => {
+    if (!window.tutorApp?.onRuntimeLog) return;
+    return window.tutorApp.onRuntimeLog(({ text }) => {
+      console.warn('[sidecar]', text.trimEnd());
+    });
+  }, []);
+
   // Check login status & load courses on mount
   useEffect(() => {
     const init = async () => {

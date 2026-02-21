@@ -62,4 +62,11 @@ contextBridge.exposeInMainWorld('tutorApp', {
     ipcRenderer.on('code:exit', listener);
     return () => ipcRenderer.removeListener('code:exit', listener);
   },
+
+  getRuntimeLogs: () => ipcRenderer.invoke('runtime:getLogs'),
+  onRuntimeLog: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('runtime:log', listener);
+    return () => ipcRenderer.removeListener('runtime:log', listener);
+  },
 });

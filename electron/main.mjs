@@ -1835,12 +1835,22 @@ const startRuntimeInternal = async (config, options = {}) => {
 
   await ensureDir(getSessionsRoot(settings));
 
+  // Resolve the base URL: if the user left it blank, pick a sensible default per provider.
+  const providerDefaultBaseUrl = {
+    openai: 'https://api.openai.com',
+    anthropic: 'https://api.anthropic.com',
+  };
+  const effectiveLlmBaseUrl =
+    runtimeConfig?.llmBaseUrl?.trim() ||
+    providerDefaultBaseUrl[runtimeConfig?.llmProvider] ||
+    '';
+
   const env = {
     ...process.env,
     LLM_PROVIDER: runtimeConfig?.llmProvider || 'custom',
     LLM_API_KEY: runtimeConfig?.llmApiKey || '',
     LLM_MODEL: runtimeConfig?.llmModel || '',
-    LLM_BASE_URL: runtimeConfig?.llmBaseUrl || '',
+    LLM_BASE_URL: effectiveLlmBaseUrl,
     CURRICULUM_DIR: curriculumBundle ? path.join(curriculumBundle, 'content', 'curriculum') : '',
     EXPERTS_DIR: expertsBundle ? path.join(expertsBundle, 'experts') : '',
     MAIN_AGENTS_DIR: appAgentsBundle ? path.join(appAgentsBundle, 'content', 'agents') : process.env.MAIN_AGENTS_DIR || '',
@@ -1871,7 +1881,10 @@ const startRuntimeInternal = async (config, options = {}) => {
   runtimeProcess.stderr?.on('data', (chunk) => {
     const text = chunk?.toString?.() || '';
     if (!text) return;
-    runtimeStderrBuffer = `${runtimeStderrBuffer}${text}`.slice(-4000);
+    runtimeStderrBuffer = `${runtimeStderrBuffer}${text}`.slice(-8000);
+    // Forward sidecar stderr to the renderer so it appears in DevTools console.
+    const focusedWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    focusedWindow?.webContents?.send('runtime:log', { stream: 'stderr', text });
   });
 
   runtimeProcess.on('exit', () => {
@@ -1953,6 +1966,10 @@ ipcMain.handle('runtime:preflight', async () => {
     stderr: runtimeStderrBuffer,
     runtime: runtimeLaunchInfo,
   };
+});
+
+ipcMain.handle('runtime:getLogs', async () => {
+  return { stderr: runtimeStderrBuffer };
 });
 
 ipcMain.handle('runtime:createSession', async (_event, payload) => {

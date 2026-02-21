@@ -277,6 +277,8 @@ declare global {
       killCodeExecution: (payload: { chapterId: string }) => Promise<{ killed: boolean; chapterId: string }>;
       onCodeOutput: (callback: (payload: CodeExecutionOutputEvent) => void) => () => void;
       onCodeExit: (callback: (payload: CodeExecutionExitEvent) => void) => () => void;
+      getRuntimeLogs: () => Promise<{ stderr: string }>;
+      onRuntimeLog: (callback: (payload: { stream: 'stderr'; text: string }) => void) => () => void;
     };
   }
 }
