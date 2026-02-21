@@ -55,6 +55,8 @@ const mapProvider = (providerId: string) => {
   }
 };
 
+const SIDECAR_BASE_URL = import.meta.env.VITE_SIDECAR_URL || 'http://127.0.0.1:8000';
+
 const normalizeBaseUrl = (url: string) => String(url || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 
 const parseSsePayload = (raw: string): RawStreamEvent | null => {
@@ -284,8 +286,7 @@ export const runtimeManager = {
       throw new Error('tutorApp API unavailable');
     }
 
-    const settings = await window.tutorApp.getSettings();
-    const baseUrl = normalizeBaseUrl(settings.sidecarBaseUrl);
+    const baseUrl = normalizeBaseUrl(SIDECAR_BASE_URL);
 
     const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/message/stream`, {
       method: 'POST',
@@ -362,8 +363,7 @@ export const runtimeManager = {
       throw new Error('tutorApp API unavailable');
     }
 
-    const settings = await window.tutorApp.getSettings();
-    const baseUrl = normalizeBaseUrl(settings.sidecarBaseUrl);
+    const baseUrl = normalizeBaseUrl(SIDECAR_BASE_URL);
     const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/dynamic_report`);
     if (!response.ok) {
       throw new Error(`Get report failed (${response.status})`);
@@ -377,8 +377,7 @@ export const runtimeManager = {
       throw new Error('tutorApp API unavailable');
     }
 
-    const settings = await window.tutorApp.getSettings();
-    const baseUrl = normalizeBaseUrl(settings.sidecarBaseUrl);
+    const baseUrl = normalizeBaseUrl(SIDECAR_BASE_URL);
     const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/end`, { method: 'POST' });
     if (!response.ok) {
       throw new Error(`End session failed (${response.status})`);
