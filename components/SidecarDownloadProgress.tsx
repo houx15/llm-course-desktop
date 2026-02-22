@@ -22,12 +22,12 @@ interface SidecarDownloadProgressProps {
   onNeedsRestart?: () => void;
 }
 
-const HEAVY_PHASES = new Set([
+// Only conda installation and env creation require a full app restart
+// (PATH changes need a fresh process). Sidecar download/deps do not.
+const RESTART_REQUIRED_PHASES = new Set([
   'downloading_conda',
   'installing_conda',
   'creating_env',
-  'downloading_sidecar',
-  'installing_deps',
 ]);
 
 const STORAGE_KEY = 'knoweia_sidecar_setup_done';
@@ -69,7 +69,7 @@ const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRet
     const unsubscribe = window.tutorApp.onSidecarDownloadProgress((payload) => {
       setState(payload);
 
-      if (HEAVY_PHASES.has(payload.phase)) {
+      if (RESTART_REQUIRED_PHASES.has(payload.phase)) {
         hadHeavyInstallRef.current = true;
       }
 

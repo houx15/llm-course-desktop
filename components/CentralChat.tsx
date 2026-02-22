@@ -40,6 +40,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [initProgress, setInitProgress] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -111,15 +112,33 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const handleStartChapter = async () => {
     if (isLoading) return;
     setIsLoading(true);
+    setInitProgress(0);
+
+    // Animate progress to ~88% while waiting for the session to be created.
+    // The interval advances quickly at first, then slows down near the ceiling.
+    const timer = setInterval(() => {
+      setInitProgress((p) => {
+        if (p >= 88) { clearInterval(timer); return p; }
+        const step = p < 40 ? 4 : p < 70 ? 2 : 1;
+        return Math.min(88, p + step);
+      });
+    }, 400);
+
     try {
       const created = await runtimeManager.createSession(chapter.id);
+      clearInterval(timer);
+      setInitProgress(100);
+      // Brief pause so the user sees 100% before the chat appears.
+      await new Promise((r) => setTimeout(r, 300));
       setSessionId(created.sessionId);
       setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
       setSessionStarted(true);
     } catch (error) {
+      clearInterval(timer);
+      setInitProgress(0);
       setSessionId(null);
       setMessages([{ role: 'model', text: `会话初始化失败：${error instanceof Error ? error.message : '未知错误'}` }]);
-      setSessionStarted(true); // Show chat so user can see the error
+      setSessionStarted(true);
     } finally {
       setIsLoading(false);
     }
@@ -287,6 +306,12 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
   // Show landing screen when no session has been started yet
   if (!sessionStarted) {
+    const initStepLabel =
+      initProgress < 30 ? '正在连接 AI 助教...' :
+      initProgress < 60 ? '正在加载课程内容...' :
+      initProgress < 90 ? '正在准备对话环境...' :
+      '即将开始...';
+
     return (
       <div className="flex flex-col h-full bg-white items-center justify-center gap-6 px-8">
         <div className="text-center max-w-sm">
@@ -298,17 +323,25 @@ const CentralChat: React.FC<CentralChatProps> = ({
             点击下方按钮，与 AI 助教开启本章学习对话。
           </p>
         </div>
-        <button
-          onClick={handleStartChapter}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {isLoading ? (
-            <><Loader2 size={16} className="animate-spin" />初始化中…</>
-          ) : (
-            '开启本章学习'
-          )}
-        </button>
+
+        {isLoading ? (
+          <div className="w-full max-w-xs flex flex-col items-center gap-3">
+            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${initProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400">{initStepLabel}</p>
+          </div>
+        ) : (
+          <button
+            onClick={handleStartChapter}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition-colors"
+          >
+            开启本章学习
+          </button>
+        )}
       </div>
     );
   }
