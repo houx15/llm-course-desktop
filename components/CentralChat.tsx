@@ -58,6 +58,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   useEffect(() => {
     let cancelled = false;
     setIsInitializing(true);
+    setRecovering(false);
     setSessionStarted(false);
     setSessionId(null);
     setMessages([]);
@@ -100,24 +101,26 @@ const CentralChat: React.FC<CentralChatProps> = ({
             if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
               if (cancelled) return;
               setRecovering(true);
+              const recoveredTurns = state.turns;
+              const recoveredSessionId = state.session_id;
               // Write recovered data to sidecar sessions directory
               await window.tutorApp!.restoreSessionState({
-                sessionId: state.session_id,
-                turns: state.turns,
+                sessionId: recoveredSessionId,
+                turns: recoveredTurns,
                 memoryJson: state.memory ?? {},
                 reportMd: state.report_md ?? '',
               });
               // Reattach the restored session in sidecar
-              await runtimeManager.reattachSession(state.session_id, chapter.id);
+              await runtimeManager.reattachSession(recoveredSessionId, chapter.id);
               const [sidecarTurns, report] = await Promise.all([
-                runtimeManager.getSessionHistory(state.session_id),
-                runtimeManager.getDynamicReport(state.session_id).catch(() => ''),
+                runtimeManager.getSessionHistory(recoveredSessionId),
+                runtimeManager.getDynamicReport(recoveredSessionId).catch(() => ''),
               ]);
               if (cancelled) return;
               setRecovering(false);
-              setSessionId(state.session_id);
+              setSessionId(recoveredSessionId);
               // Build messages: prefer sidecar turns, fall back to backend turns
-              const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : state.turns.map((t) => ({
+              const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : recoveredTurns.map((t) => ({
                 user_message: t.user_message,
                 companion_response: t.companion_response,
               }));
