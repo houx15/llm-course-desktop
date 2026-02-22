@@ -406,17 +406,6 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     onSendOutputToChatInput?.(`\`\`\`\n${outputText}\n\`\`\``);
   };
 
-  const handleModeChange = (next: EditorMode) => {
-    setMode(next);
-    // When switching to notebook, ensure we have an active notebook file
-    if (next === 'notebook') {
-      const ipynbFiles = files.filter((f) => f.name.toLowerCase().endsWith('.ipynb'));
-      if (!activeNotebook && ipynbFiles.length > 0) {
-        setActiveNotebook(ipynbFiles[0].name);
-      }
-    }
-  };
-
   const handleOpenFolder = () => {
     if (chapterDir) {
       codeWorkspace.openPath(chapterDir).catch(() => {});
@@ -498,19 +487,12 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     <div className={`h-full flex flex-col bg-white min-w-0 ${visible ? 'border-l border-gray-200' : 'border-l-0'}`}>
       <CodeEditorToolbar
         mode={mode}
-        files={files}
-        activeFile={activeFile}
         isRunning={isRunning}
         hasOutput={outputChunks.length > 0}
-        chapterDir={chapterDir}
-        onModeChange={handleModeChange}
-        onSelectFile={handleSelectFile}
         onRun={handleRun}
         onStop={handleStop}
-        onClearOutput={handleClearOutput}
         onCopyOutput={handleCopyOutput}
         onSendToTutor={handleSendToTutor}
-        onOpenFolder={handleOpenFolder}
         onOpenJupyter={handleOpenJupyter}
       />
 

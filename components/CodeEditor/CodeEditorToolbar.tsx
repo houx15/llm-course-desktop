@@ -1,71 +1,32 @@
 import React from 'react';
 import { ClipboardCopy, Loader2, Play, Send, Square } from 'lucide-react';
-import { CodeWorkspaceFile } from '../../types';
 
 export type EditorMode = 'notebook' | 'script';
 
 interface CodeEditorToolbarProps {
   mode: EditorMode;
-  files: CodeWorkspaceFile[];
-  activeFile: string;
   isRunning: boolean;
   hasOutput: boolean;
-  chapterDir?: string;
-  onModeChange: (mode: EditorMode) => void;
-  onSelectFile: (filename: string) => void;
   onRun: () => void;
   onStop: () => void;
-  onClearOutput: () => void;
   onCopyOutput: () => void;
   onSendToTutor: () => void;
-  onOpenFolder?: () => void;
   onOpenJupyter?: () => void;
 }
 
 const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
   mode,
-  files,
-  activeFile,
   isRunning,
   hasOutput,
-  chapterDir,
-  onModeChange,
-  onSelectFile,
   onRun,
   onStop,
-  onClearOutput,
   onCopyOutput,
   onSendToTutor,
-  onOpenFolder,
   onOpenJupyter,
 }) => {
   return (
     <div className="px-3 py-2 border-b border-gray-200 bg-white flex items-center justify-between gap-2">
-      <div className="flex items-center gap-2 min-w-0">
-        {/* Mode toggle */}
-        <div className="inline-flex rounded border border-gray-200 text-xs overflow-hidden">
-          <button
-            onClick={() => onModeChange('notebook')}
-            className={`px-2.5 py-1.5 ${
-              mode === 'notebook'
-                ? 'bg-gray-900 text-white'
-                : 'bg-white text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            Notebook
-          </button>
-          <button
-            onClick={() => onModeChange('script')}
-            className={`px-2.5 py-1.5 border-l border-gray-200 ${
-              mode === 'script'
-                ? 'bg-gray-900 text-white'
-                : 'bg-white text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            Script
-          </button>
-        </div>
-
+      <div className="flex items-center gap-2">
         {mode === 'script' && (
           <>
             {!isRunning ? (
@@ -101,16 +62,7 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
             className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
             title="Open workspace in Jupyter Notebook (browser)"
           >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 6v6l4 2" />
             </svg>
