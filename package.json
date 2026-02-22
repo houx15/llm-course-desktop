@@ -51,6 +51,7 @@
   },
   "dependencies": {
     "@google/genai": "latest",
+    "tar": "^6.2.1",
     "@monaco-editor/react": "^4.7.0",
     "lucide-react": "0.303.0",
     "monaco-editor": "^0.55.1",
@@ -67,7 +68,6 @@
     "concurrently": "^9.1.2",
     "electron": "31.4.0",
     "electron-builder": "26.7.0",
-    "tar": "^6.2.1",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
