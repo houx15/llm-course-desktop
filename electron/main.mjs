@@ -45,6 +45,7 @@ const defaultSettings = () => ({
   activeProvider: 'gpt',
   llmFormat: '',
   llmBaseUrl: '',
+  devLocalSidecar: false,
 });
 
 // Fixed URL constants — not user-configurable
@@ -1055,6 +1056,7 @@ const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
   const installedVersions = {
     app_agents: indexData?.app_agents?.core?.version || '',
     experts_shared: indexData?.experts_shared?.shared?.version || '',
+    curriculum_templates: indexData?.app_agents?.curriculum_templates?.version || '',
     python_runtime: (() => {
       const entries = Object.values(indexData?.python_runtime || {});
       return entries.length > 0 ? String(entries[0]?.version || '') : '';
@@ -1842,6 +1844,9 @@ const startRuntimeInternal = async (config, options = {}) => {
   const curriculumBundle = await resolveBundlePath('curriculum');
   const expertsBundle = await resolveBundlePath('experts');
   const appAgentsBundle = await resolveBundlePath('app_agents');
+  // Resolve curriculum_templates bundle (app_agents type, curriculum_templates scope)
+  const templatesEntry = (await loadIndex())?.app_agents?.curriculum_templates;
+  const templatesBundlePath = templatesEntry?.path || null;
 
   if (!runtimeCwd) {
     return {
@@ -1874,6 +1879,7 @@ const startRuntimeInternal = async (config, options = {}) => {
     CURRICULUM_DIR: curriculumBundle ? path.join(curriculumBundle, 'content', 'curriculum') : '',
     EXPERTS_DIR: expertsBundle ? path.join(expertsBundle, 'experts') : '',
     MAIN_AGENTS_DIR: appAgentsBundle ? path.join(appAgentsBundle, 'content', 'agents') : process.env.MAIN_AGENTS_DIR || '',
+    CURRICULUM_TEMPLATES_DIR: templatesBundlePath || '',
     SESSIONS_DIR: getSessionsRoot(settings),
     PYTHON_RUNTIME_ROOT: bundledRuntime?.bundleRoot || '',
     HOST: '127.0.0.1',

@@ -246,6 +246,19 @@ export const runtimeManager = {
   },
 
   async ensureStarted() {
+    // Dev mode: sidecar is started manually by the developer, skip all bundle/spawn logic.
+    const settings = await window.tutorApp!.getSettings();
+    if (settings.devLocalSidecar) {
+      const preflight = await this.preflight();
+      if (!preflight.ok) {
+        return {
+          started: false,
+          reason: `[Dev] Local sidecar not reachable at ${SIDECAR_BASE_URL}: ${preflight.reason || preflight.phase || 'preflight failed'}`,
+        };
+      }
+      return { started: true };
+    }
+
     const health = await this.health();
     if (health.healthy) {
       const preflight = await this.preflight();

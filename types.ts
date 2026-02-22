@@ -123,6 +123,7 @@ declare global {
         activeProvider: string;
         llmFormat: string;
         llmBaseUrl: string;
+        devLocalSidecar: boolean;
       }>;
       setSettings: (patch: Partial<{
         storageRoot: string;
@@ -132,6 +133,7 @@ declare global {
         activeProvider: string;
         llmFormat: string;
         llmBaseUrl: string;
+        devLocalSidecar: boolean;
       }>) => Promise<any>;
       chooseStorageRoot: () => Promise<{ canceled: boolean; path?: string; settings?: any }>;
       getAuth: () => Promise<{

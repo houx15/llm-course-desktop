@@ -25,6 +25,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [activeTab, setActiveTab] = useState<'storage' | 'api' | 'about'>('storage');
   const [storageRoot, setStorageRoot] = useState('');
   const [rememberLogin, setRememberLogin] = useState(true);
+  const [devLocalSidecar, setDevLocalSidecar] = useState(false);
 
   const [activeProviderId, setActiveProviderId] = useState('gpt');
   const [configs, setConfigs] = useState<Record<string, ProviderConfig>>({});
@@ -50,6 +51,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       const settings = await window.tutorApp!.getSettings();
       setStorageRoot(settings.storageRoot || '');
       setRememberLogin(settings.rememberLogin !== false);
+      setDevLocalSidecar(settings.devLocalSidecar === true);
       const providerId = settings.activeProvider || 'gpt';
       setActiveProviderId(providerId);
       const presetProvider = PROVIDERS.find((p) => p.id === providerId);
@@ -143,6 +145,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         activeProvider: activeProviderId,
         llmFormat,
         llmBaseUrl,
+        devLocalSidecar,
       });
 
       if (!rememberLogin) {
@@ -264,6 +267,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   <input type="checkbox" checked={rememberLogin} onChange={(e) => setRememberLogin(e.target.checked)} />
                   记住登录状态（保存 refresh token）
                 </label>
+
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-2">开发者选项</p>
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    <input type="checkbox" checked={devLocalSidecar} onChange={(e) => setDevLocalSidecar(e.target.checked)} />
+                    使用本地 sidecar（手动启动，跳过 bundle 管理）
+                  </label>
+                  {devLocalSidecar && (
+                    <p className="text-[11px] text-amber-600 mt-1 ml-5">
+                      启用后，App 将直接连接 http://127.0.0.1:8000，不会下载或启动 bundle。请确保 sidecar 已在本地手动运行。
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
