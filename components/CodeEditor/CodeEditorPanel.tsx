@@ -234,15 +234,15 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       try {
         let listed = await codeWorkspace.listFiles(chapterId);
         if (!listed.length) {
-          // Default: create a .ipynb notebook (notebook mode is the default)
+          // Default: create a .py script (no kernel started until user explicitly opens a .ipynb)
           const chapterCode = chapterId.includes('/')
             ? chapterId.split('/').pop() || chapterId
             : chapterId;
-          const ipynbName = `${chapterCode.replace(/[^\w\-.]/g, '_')}.ipynb`;
+          const pyName = `${chapterCode.replace(/[^\w\-.]/g, '_')}.py`;
           await codeWorkspace.createFile(
             chapterId,
-            ipynbName,
-            buildDefaultNotebook(chapterTitle || chapterId)
+            pyName,
+            buildDefaultScript(chapterId, chapterTitle)
           );
           listed = await codeWorkspace.listFiles(chapterId);
         }
@@ -254,16 +254,19 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
           if (!cancelled) setChapterDir(dir);
         }).catch(() => {});
 
-        // Auto-detect mode: notebook if any .ipynb file exists, else script
         const ipynbFiles = listed.filter((f) => f.name.toLowerCase().endsWith('.ipynb'));
-        const detectedMode: EditorMode = ipynbFiles.length > 0 ? 'notebook' : 'script';
-        setMode(detectedMode);
+        const pyFiles = listed.filter((f) => f.name.toLowerCase().endsWith('.py'));
 
-        // Set active notebook file
+        // Only auto-open a notebook (and start kernel) if:
+        // 1. The user previously had a specific .ipynb open (initialActiveFile), OR
+        // 2. There are no .py files — notebook is the only option
         const preferredNb =
           (initialActiveFile && ipynbFiles.find((f) => f.name === initialActiveFile)?.name) ||
-          ipynbFiles[0]?.name ||
+          (pyFiles.length === 0 ? ipynbFiles[0]?.name : '') ||
           '';
+
+        const detectedMode: EditorMode = preferredNb ? 'notebook' : 'script';
+        setMode(detectedMode);
         setActiveNotebook(preferredNb);
         setBootedForChapterId(chapterId); // state is now consistent for this chapter
 
