@@ -90,6 +90,9 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const loadTokenRef = useRef(0);
   const latestDocRef = useRef({ chapterId, activeFile, code });
   const lastAppliedInjectionRef = useRef<number | null>(null);
+  // Always holds the latest chapterId so async callbacks can guard stale state updates
+  const currentChapterIdRef = useRef(chapterId);
+  currentChapterIdRef.current = chapterId;
 
   // Callback refs: always point to the latest prop without being useEffect deps.
   // This prevents infinite loops when parent passes inline arrow functions.
@@ -220,6 +223,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       setIsRunning(false);
       setActiveNotebook('');
       setActiveFile('');
+      setFiles([]);
       loadTokenRef.current += 1;
 
       try {
@@ -422,8 +426,12 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   };
 
   const refreshFiles = async () => {
-    const listed = await codeWorkspace.listFiles(chapterId).catch(() => [] as CodeWorkspaceFile[]);
-    setFiles(listed);
+    const forChapterId = chapterId; // capture at call time (closure may be from old render)
+    const listed = await codeWorkspace.listFiles(forChapterId).catch(() => [] as CodeWorkspaceFile[]);
+    // Guard: only update state if we're still on the same chapter
+    if (currentChapterIdRef.current === forChapterId) {
+      setFiles(listed);
+    }
   };
 
   const handleNewFile = async (filename: string) => {

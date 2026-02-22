@@ -38,6 +38,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [sessionStarted, setSessionStarted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -52,6 +54,10 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
   useEffect(() => {
     let cancelled = false;
+    setIsInitializing(true);
+    setSessionStarted(false);
+    setSessionId(null);
+    setMessages([]);
 
     const init = async () => {
       try {
@@ -83,21 +89,15 @@ const CentralChat: React.FC<CentralChatProps> = ({
           if (report) {
             onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
           }
-          return;
+          setSessionStarted(true);
         }
-
-        const created = await runtimeManager.createSession(chapter.id);
-        if (cancelled) {
-          return;
-        }
-        setSessionId(created.sessionId);
-        setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
+        // No existing session → show landing screen, wait for user to click "开启本章学习"
       } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        setSessionId(null);
-        setMessages([{ role: 'model', text: `会话初始化失败：${error instanceof Error ? error.message : '未知错误'}` }]);
+        if (cancelled) return;
+        // On error checking sessions, also show landing screen
+        console.warn('Session check failed:', error);
+      } finally {
+        if (!cancelled) setIsInitializing(false);
       }
     };
 
@@ -107,6 +107,23 @@ const CentralChat: React.FC<CentralChatProps> = ({
       cancelled = true;
     };
   }, [chapter.id]);
+
+  const handleStartChapter = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      const created = await runtimeManager.createSession(chapter.id);
+      setSessionId(created.sessionId);
+      setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
+      setSessionStarted(true);
+    } catch (error) {
+      setSessionId(null);
+      setMessages([{ role: 'model', text: `会话初始化失败：${error instanceof Error ? error.message : '未知错误'}` }]);
+      setSessionStarted(true); // Show chat so user can see the error
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -258,6 +275,43 @@ const CentralChat: React.FC<CentralChatProps> = ({
       handleSend();
     }
   };
+
+  // Show spinner while checking for existing session
+  if (isInitializing) {
+    return (
+      <div className="flex flex-col h-full bg-white items-center justify-center">
+        <Loader2 size={28} className="animate-spin text-gray-300" />
+      </div>
+    );
+  }
+
+  // Show landing screen when no session has been started yet
+  if (!sessionStarted) {
+    return (
+      <div className="flex flex-col h-full bg-white items-center justify-center gap-6 px-8">
+        <div className="text-center max-w-sm">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
+            <Bot size={28} className="text-blue-500" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">{chapter.title}</h2>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            点击下方按钮，与 AI 助教开启本章学习对话。
+          </p>
+        </div>
+        <button
+          onClick={handleStartChapter}
+          disabled={isLoading}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isLoading ? (
+            <><Loader2 size={16} className="animate-spin" />初始化中…</>
+          ) : (
+            '开启本章学习'
+          )}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-white relative">
