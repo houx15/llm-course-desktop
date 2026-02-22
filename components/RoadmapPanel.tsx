@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Chapter, Checkpoint } from '../types';
-import { CheckCircle2, Lock, CircleDot, ChevronDown } from 'lucide-react';
+import { CheckCircle2, Lock, CircleDot, ChevronDown, Target, Clock, User, Lightbulb, BookOpen } from 'lucide-react';
 
 interface RoadmapPanelProps {
   chapter: Chapter;
@@ -51,19 +51,43 @@ function parseReportSections(markdown: string): { intro: string; sections: Repor
 
 const mdComponents = {
   h3: ({ children }: any) => (
-    <h3 className="text-[11px] font-semibold text-gray-600 mt-3 mb-1 first:mt-0">{children}</h3>
+    <h3 className="text-sm font-semibold text-gray-700 mt-3 mb-1 first:mt-0">{children}</h3>
   ),
   p: ({ children }: any) => (
-    <p className="text-xs text-gray-600 leading-relaxed mb-2">{children}</p>
+    <p className="text-sm text-gray-600 leading-relaxed mb-2">{children}</p>
   ),
-  ul: ({ children }: any) => <ul className="mb-2 pl-4 space-y-0.5 list-disc">{children}</ul>,
-  ol: ({ children }: any) => <ol className="mb-2 pl-4 space-y-0.5 list-decimal">{children}</ol>,
-  li: ({ children }: any) => <li className="text-xs text-gray-600 leading-relaxed">{children}</li>,
+  ul: ({ children }: any) => <ul className="mb-2 pl-4 space-y-1 list-disc">{children}</ul>,
+  ol: ({ children }: any) => <ol className="mb-2 pl-4 space-y-1 list-decimal">{children}</ol>,
+  li: ({ children }: any) => <li className="text-sm text-gray-600 leading-relaxed">{children}</li>,
   strong: ({ children }: any) => <strong className="font-semibold text-gray-800">{children}</strong>,
   code: ({ children }: any) => (
-    <code className="text-[0.78rem] bg-gray-100 px-1 py-0.5 rounded font-mono text-pink-600">{children}</code>
+    <code className="text-[0.82rem] bg-gray-100 px-1 py-0.5 rounded font-mono text-pink-600">{children}</code>
   ),
 };
+
+interface SectionStyle {
+  Icon: React.ElementType;
+  iconColor: string;
+  headerBg: string;
+  borderColor: string;
+}
+
+function getSectionStyle(title: string): SectionStyle {
+  const t = title;
+  if (t.includes('任务') || t.includes('task') || t.includes('Task')) {
+    return { Icon: Target, iconColor: 'text-blue-500', headerBg: 'bg-blue-50 hover:bg-blue-100', borderColor: 'border-blue-100' };
+  }
+  if (t.includes('活动') || t.includes('回合') || t.includes('Recent') || t.includes('recent')) {
+    return { Icon: Clock, iconColor: 'text-purple-500', headerBg: 'bg-purple-50 hover:bg-purple-100', borderColor: 'border-purple-100' };
+  }
+  if (t.includes('学习者') || t.includes('状态') || t.includes('Student') || t.includes('student')) {
+    return { Icon: User, iconColor: 'text-green-500', headerBg: 'bg-green-50 hover:bg-green-100', borderColor: 'border-green-100' };
+  }
+  if (t.includes('下一步') || t.includes('建议') || t.includes('Next') || t.includes('next')) {
+    return { Icon: Lightbulb, iconColor: 'text-orange-500', headerBg: 'bg-orange-50 hover:bg-orange-100', borderColor: 'border-orange-100' };
+  }
+  return { Icon: BookOpen, iconColor: 'text-gray-400', headerBg: 'bg-gray-50 hover:bg-gray-100', borderColor: 'border-gray-100' };
+}
 
 const RoadmapPanel: React.FC<RoadmapPanelProps> = ({
   chapter,
@@ -147,7 +171,7 @@ const RoadmapPanel: React.FC<RoadmapPanelProps> = ({
     <div className="h-full flex flex-col bg-white overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">学习报告</span>
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">学习进度报告</span>
         {(isRoadmapUpdating || isMemoUpdating) && (
           <span className="text-[10px] text-orange-500 animate-pulse font-medium">更新中…</span>
         )}
@@ -171,30 +195,26 @@ const RoadmapPanel: React.FC<RoadmapPanelProps> = ({
         ) : sections.length > 0 ? (
           /* Accordion report sections */
           <div className="divide-y divide-gray-100">
-            {/* Intro (H1 title) — show minimally */}
-            {intro && (
-              <div className="px-4 py-2 bg-gray-50">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ h1: ({ children }: any) => <span className="text-xs font-bold text-gray-500">{children}</span>, p: mdComponents.p }}>
-                  {intro}
-                </ReactMarkdown>
-              </div>
-            )}
             {sections.map((section, i) => {
               const isOpen = openSections.has(i);
+              const { Icon, iconColor, headerBg, borderColor } = getSectionStyle(section.title);
               return (
-                <div key={i}>
+                <div key={i} className={`border-l-4 ${borderColor}`}>
                   <button
                     onClick={() => toggleSection(i)}
-                    className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50 transition-colors"
+                    className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${headerBg}`}
                   >
-                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">{section.title}</span>
+                    <span className="flex items-center gap-2">
+                      <Icon size={14} className={`shrink-0 ${iconColor}`} />
+                      <span className="text-sm font-semibold text-gray-700">{section.title}</span>
+                    </span>
                     <ChevronDown
-                      size={13}
+                      size={14}
                       className={`text-gray-400 transition-transform shrink-0 ml-2 ${isOpen ? 'rotate-180' : ''}`}
                     />
                   </button>
                   {isOpen && (
-                    <div className="px-4 pb-3">
+                    <div className="px-4 pb-3 pt-1">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                         {section.content}
                       </ReactMarkdown>
