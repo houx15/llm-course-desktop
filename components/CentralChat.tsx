@@ -35,8 +35,16 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const handledInjectionIdRef = useRef<number | null>(null);
+
+  const autoResizeTextarea = () => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 300)}px`;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -174,6 +182,10 @@ const CentralChat: React.FC<CentralChatProps> = ({
     const text = inputValue;
     if (!text.trim()) return;
     setInputValue('');
+    // Reset textarea height after clearing
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     const sent = await sendMessage(text);
     if (!sent) {
       setInputValue(text);
@@ -209,47 +221,50 @@ const CentralChat: React.FC<CentralChatProps> = ({
                     msg.role === 'user' ? 'bg-gray-100 text-gray-900 rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none shadow-md'
                   }`}
                 >
-                  <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent prose-ul:my-2 prose-li:my-0.5">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        code(props: any) {
-                          const { className, children, ...rest } = props;
-                          const match = /language-(\w+)/.exec(className || '');
-                          const rawCode = String(children).replace(/\n$/, '');
-                          const language = match?.[1] || 'text';
-                          // Block code: has a language tag OR content spans multiple lines
-                          const isBlock = !!match || rawCode.includes('\n');
+                  {msg.role === 'user' ? (
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
+                  ) : (
+                    <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent prose-ul:my-2 prose-li:my-0.5">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          code(props: any) {
+                            const { className, children, ...rest } = props;
+                            const match = /language-(\w+)/.exec(className || '');
+                            const rawCode = String(children).replace(/\n$/, '');
+                            const language = match?.[1] || 'text';
+                            const isBlock = !!match || rawCode.includes('\n');
 
-                          if (isBlock) {
+                            if (isBlock) {
+                              return (
+                                <div className="relative group/code">
+                                  <SyntaxHighlighter
+                                    {...rest}
+                                    children={rawCode}
+                                    style={vs}
+                                    language={language}
+                                    PreTag="div"
+                                    customStyle={{ margin: '1em 0', borderRadius: '0.5rem', fontSize: '0.9em' }}
+                                  />
+                                </div>
+                              );
+                            }
+
                             return (
-                              <div className="relative group/code">
-                                <SyntaxHighlighter
-                                  {...rest}
-                                  children={rawCode}
-                                  style={vs}
-                                  language={language}
-                                  PreTag="div"
-                                  customStyle={{ margin: '1em 0', borderRadius: '0.5rem', fontSize: '0.9em' }}
-                                />
-                              </div>
+                              <code
+                                {...rest}
+                                className="bg-gray-100 px-1 py-0.5 rounded font-mono text-pink-600 text-[0.85em]"
+                              >
+                                {children}
+                              </code>
                             );
-                          }
-
-                          return (
-                            <code
-                              {...rest}
-                              className="bg-gray-100 px-1 py-0.5 rounded font-mono text-pink-600 text-[0.85em]"
-                            >
-                              {children}
-                            </code>
-                          );
-                        },
-                      }}
-                    >
-                      {msg.text}
-                    </ReactMarkdown>
-                  </div>
+                          },
+                        }}
+                      >
+                        {msg.text}
+                      </ReactMarkdown>
+                    </div>
+                  )}
 
                   {hasCodeBlock && onStartCoding && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
@@ -298,11 +313,13 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
           <div className="flex-1 relative shadow-sm rounded-2xl border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
             <textarea
+              ref={textareaRef}
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={(e) => { setInputValue(e.target.value); autoResizeTextarea(); }}
               onKeyDown={handleKeyDown}
-              placeholder="输入你的问题或代码..."
-              className="w-full pl-4 pr-12 py-3 bg-transparent border-none outline-none resize-none text-sm min-h-[50px] max-h-[150px]"
+              placeholder="输入你的问题或代码... (Shift+Enter 换行)"
+              className="w-full pl-4 pr-12 py-3 bg-transparent border-none outline-none resize-none text-sm overflow-y-auto"
+              style={{ minHeight: '50px', maxHeight: '300px' }}
               rows={1}
             />
             <button
