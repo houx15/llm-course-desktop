@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, RefreshCw, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Loader2, AlertCircle, RefreshCw, CheckCircle2, RotateCcw } from 'lucide-react';
 
 export interface SidecarDownloadState {
   phase:
@@ -19,7 +19,18 @@ export interface SidecarDownloadState {
 
 interface SidecarDownloadProgressProps {
   onRetry: () => void;
+  onNeedsRestart?: () => void;
 }
+
+const HEAVY_PHASES = new Set([
+  'downloading_conda',
+  'installing_conda',
+  'creating_env',
+  'downloading_sidecar',
+  'installing_deps',
+]);
+
+const STORAGE_KEY = 'knoweia_sidecar_setup_done';
 
 const formatBytes = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -33,30 +44,47 @@ const phaseLabel: Record<string, string> = {
   installing_conda:    '正在安装 Python 环境...',
   creating_env:        '正在创建运行环境...',
   downloading_sidecar: '正在下载学习引擎...',
-  installing_deps:     '正在安装依赖包 (首次约需数分钟)...',
+  installing_deps:     '正在安装依赖包...',
   done:                '准备就绪',
   error:               '出现错误',
 };
 
-const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRetry }) => {
+const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRetry, onNeedsRestart }) => {
   const [state, setState] = useState<SidecarDownloadState>({
     phase: 'checking',
     percent: 0,
     status: '正在检查学习引擎...',
   });
+  const [showRestart, setShowRestart] = useState(false);
+
+  // True only on the very first run before any successful sidecar setup.
+  const [isFirstLaunch] = useState(() => !localStorage.getItem(STORAGE_KEY));
+
+  // Ref so the progress callback always sees the latest value without stale closure.
+  const hadHeavyInstallRef = useRef(false);
 
   useEffect(() => {
     if (!window.tutorApp?.onSidecarDownloadProgress) return;
 
     const unsubscribe = window.tutorApp.onSidecarDownloadProgress((payload) => {
       setState(payload);
+
+      if (HEAVY_PHASES.has(payload.phase)) {
+        hadHeavyInstallRef.current = true;
+      }
+
+      if (payload.phase === 'done') {
+        localStorage.setItem(STORAGE_KEY, '1');
+        if (hadHeavyInstallRef.current) {
+          // Fresh conda/python was just installed — a restart is needed.
+          setShowRestart(true);
+          onNeedsRestart?.();
+        }
+      }
     });
 
     return unsubscribe;
-  }, []);
-
-  // No auto-dismiss on 'done' — parent controls overlay lifetime so it stays
-  // visible until runtime start/health-check completes.
+  }, [onNeedsRestart]);
 
   const isError = state.phase === 'error';
   const isDone = state.phase === 'done';
@@ -70,23 +98,33 @@ const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRet
             <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
           </div>
         )}
-        {isDone && (
+        {isDone && !showRestart && (
           <div className="w-12 h-12 flex items-center justify-center">
             <CheckCircle2 className="w-10 h-10 text-green-500" />
           </div>
         )}
-        {isError && (
+        {(isError || showRestart) && (
           <div className="w-12 h-12 flex items-center justify-center">
-            <AlertCircle className="w-10 h-10 text-red-500" />
+            {showRestart
+              ? <RotateCcw className="w-10 h-10 text-blue-500" />
+              : <AlertCircle className="w-10 h-10 text-red-500" />}
           </div>
         )}
 
         <div className="text-center">
           <h2 className="text-lg font-semibold text-gray-900 mb-1">
-            {isError ? '下载失败' : isDone ? '准备就绪' : '正在设置 Knoweia (首次约需15分钟)...'}
+            {showRestart
+              ? '环境已就绪，需要重启'
+              : isError
+                ? '下载失败'
+                : isDone
+                  ? '准备就绪'
+                  : `正在设置 Knoweia${isFirstLaunch ? ' (首次约需15分钟)' : ''}...`}
           </h2>
           <p className="text-sm text-gray-500">
-            {phaseLabel[state.phase] || state.status}
+            {showRestart
+              ? 'Python 环境已安装完成，请重启应用以完成初始化。'
+              : phaseLabel[state.phase] || state.status}
           </p>
         </div>
 
@@ -109,7 +147,17 @@ const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRet
           </div>
         )}
 
-        {isError && (
+        {showRestart && (
+          <button
+            onClick={() => window.tutorApp?.relaunchApp()}
+            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+          >
+            <RotateCcw size={14} />
+            重启应用
+          </button>
+        )}
+
+        {isError && !showRestart && (
           <div className="w-full flex flex-col items-center gap-3">
             <p className="text-sm text-red-600 text-center">{state.status}</p>
             <button

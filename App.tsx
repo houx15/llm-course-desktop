@@ -59,6 +59,7 @@ const App: React.FC = () => {
   const editorHostRef = useRef<HTMLDivElement>(null);
   const eventCounterRef = useRef(1);
   const startupInFlightRef = useRef(false);
+  const sidecarNeedsRestartRef = useRef(false);
 
   const parseReportLines = (report: string) =>
     report
@@ -257,6 +258,7 @@ const App: React.FC = () => {
   const startupAfterLogin = async () => {
     if (startupInFlightRef.current) return;
     startupInFlightRef.current = true;
+    sidecarNeedsRestartRef.current = false;
     try {
       try {
         await updateManager.syncAppBundles();
@@ -292,10 +294,11 @@ const App: React.FC = () => {
           }
           // Keep overlay visible for sidecar setup/download failures so retry remains accessible
           return;
-        } else {
+        } else if (!sidecarNeedsRestartRef.current) {
           setRuntimeNotice('');
           setShowSidecarDownload(false);
         }
+        // If sidecarNeedsRestartRef is true, keep overlay visible so the restart button stays.
       } catch (err) {
         console.warn('Runtime start failed:', err);
         setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
@@ -515,7 +518,10 @@ const App: React.FC = () => {
   const currentEditorFile = currentChapterId ? editorActiveFiles[currentChapterId] || '' : '';
 
   const sidecarOverlay = showSidecarDownload ? (
-    <SidecarDownloadProgress onRetry={handleSidecarRetry} />
+    <SidecarDownloadProgress
+      onRetry={handleSidecarRetry}
+      onNeedsRestart={() => { sidecarNeedsRestartRef.current = true; }}
+    />
   ) : null;
 
   // Render Auth Screen if not logged in

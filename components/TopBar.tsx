@@ -46,9 +46,9 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick, onToggleSi
                   {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => setIsSettingsOpen(true)}
-                className="flex items-center gap-3 p-1.5 pl-3 rounded-xl border border-transparent hover:bg-gray-50 hover:border-gray-200 transition-all group"
+                className="flex items-center gap-4 p-1.5 pl-4 rounded-xl border border-transparent hover:bg-gray-50 hover:border-gray-200 transition-all group"
                 title="Settings"
               >
                   <div className="flex flex-col items-end hidden sm:block">
