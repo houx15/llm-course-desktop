@@ -16,6 +16,12 @@ interface BackendCourseDetail {
   title: string;
   description: string;
   instructor: string;
+  overview: {
+    experience: string;
+    gains: string;
+    necessity: string;
+    journey: string;
+  };
 }
 
 interface BackendChapter {
@@ -100,10 +106,10 @@ export const courseService = {
         title: course.title,
         status: 'IN_PROGRESS',
         overview: {
-          experience: '',
-          gains: '',
-          necessity: course.description || '',
-          journey: '',
+          experience: course.overview?.experience || '',
+          gains: course.overview?.gains || '',
+          necessity: course.overview?.necessity || course.description || '',
+          journey: course.overview?.journey || '',
         },
         chapters: chapters.sort((a, b) => a.order - b.order).map((chapter) => mapChapter(scopePrefix, chapter)),
       },
