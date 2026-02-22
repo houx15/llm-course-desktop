@@ -121,3 +121,29 @@ export interface SessionStateResult {
 export const fetchSessionState = (chapterId: string): Promise<SessionStateResult> => {
   return backendClient.get<SessionStateResult>(`/v1/chapters/${encodeURIComponent(chapterId)}/session-state`);
 };
+
+export async function getWorkspaceUploadUrl(params: {
+  chapterId: string;
+  filename: string;
+  fileSizeBytes: number;
+}): Promise<{ presigned_url: string; oss_key: string }> {
+  return backendClient.post('/v1/storage/workspace/upload-url', {
+    chapter_id: params.chapterId,
+    filename: params.filename,
+    file_size_bytes: params.fileSizeBytes,
+  });
+}
+
+export async function confirmWorkspaceUpload(params: {
+  ossKey: string;
+  filename: string;
+  chapterId: string;
+  fileSizeBytes: number;
+}): Promise<{ quota_used_bytes: number; quota_limit_bytes: number }> {
+  return backendClient.post('/v1/storage/workspace/confirm', {
+    oss_key: params.ossKey,
+    filename: params.filename,
+    chapter_id: params.chapterId,
+    file_size_bytes: params.fileSizeBytes,
+  });
+}

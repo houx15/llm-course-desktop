@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClipboardCopy, Loader2, Play, Send, Square } from 'lucide-react';
+import { ClipboardCopy, Loader2, Play, Send, Square, Upload } from 'lucide-react';
 
 export type EditorMode = 'notebook' | 'script';
 
@@ -12,6 +12,9 @@ interface CodeEditorToolbarProps {
   onCopyOutput: () => void;
   onSendToTutor: () => void;
   onOpenJupyter?: () => void;
+  onSubmit?: () => void;
+  isSubmitting?: boolean;
+  submitDone?: boolean;
 }
 
 const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
@@ -23,6 +26,9 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
   onCopyOutput,
   onSendToTutor,
   onOpenJupyter,
+  onSubmit,
+  isSubmitting = false,
+  submitDone = false,
 }) => {
   return (
     <div className="px-3 py-2 border-b border-gray-200 bg-white flex items-center justify-between gap-2">
@@ -91,6 +97,17 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
               Send
             </button>
           </>
+        )}
+        {onSubmit && (
+          <button
+            onClick={onSubmit}
+            disabled={isSubmitting}
+            className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="提交文件到云端"
+          >
+            {isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+            {submitDone ? '已提交' : '提交'}
+          </button>
         )}
       </div>
     </div>

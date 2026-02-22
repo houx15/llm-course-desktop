@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CodeWorkspaceFile } from '../../types';
 import { codeWorkspace } from '../../services/codeWorkspace';
+import { getWorkspaceUploadUrl, confirmWorkspaceUpload } from '../../services/backendClient';
 import CodeEditorToolbar, { EditorMode } from './CodeEditorToolbar';
 import OutputPanel, { OutputChunk } from './OutputPanel';
 import NotebookEditor, { buildDefaultNotebook } from './NotebookEditor';
@@ -86,6 +87,8 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const [didCopy, setDidCopy] = useState(false);
   const [monacoEditor, setMonacoEditor] = useState<MonacoEditorComponent | null>(null);
   const [monacoLoadDone, setMonacoLoadDone] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitDone, setSubmitDone] = useState(false);
   const fallbackEditorRef = useRef<HTMLTextAreaElement>(null);
   const fallbackHighlightRef = useRef<HTMLDivElement>(null);
 
@@ -496,6 +499,45 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     }
   };
 
+  const handleSubmit = async () => {
+    const filename = mode === 'notebook' ? activeNotebook : activeFile;
+    if (!filename || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setSubmitDone(false);
+    try {
+      // Read current file content from disk
+      let content: string;
+      try {
+        content = await codeWorkspace.readFile(chapterId, filename);
+      } catch {
+        content = code;
+      }
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const fileSizeBytes = blob.size;
+
+      const { presigned_url, oss_key } = await getWorkspaceUploadUrl({
+        chapterId,
+        filename,
+        fileSizeBytes,
+      });
+
+      // Direct PUT to OSS
+      await fetch(presigned_url, { method: 'PUT', body: blob });
+
+      // Confirm with backend
+      await confirmWorkspaceUpload({ ossKey: oss_key, filename, chapterId, fileSizeBytes });
+
+      setSubmitDone(true);
+      setTimeout(() => setSubmitDone(false), 2000);
+    } catch (err: unknown) {
+      console.warn('[CodeEditor] File submit failed:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const editorLanguage = getLanguageFromFilename(activeFile);
   const highlightedLanguage = editorLanguage === 'plaintext' ? 'text' : editorLanguage;
 
@@ -513,6 +555,9 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         onCopyOutput={handleCopyOutput}
         onSendToTutor={handleSendToTutor}
         onOpenJupyter={handleOpenJupyter}
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        submitDone={submitDone}
       />
 
       {/* ── Body: sidebar + editor side-by-side ── */}
