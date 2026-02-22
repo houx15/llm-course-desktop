@@ -1443,16 +1443,9 @@ const seedWorkspaceFromCurriculumIfNeeded = async (rawChapterId, chapterDir) => 
   }
 
   const indexData = await loadIndex();
-  const curriculumEntries = Object.entries(indexData?.curriculum || {}).filter(([, entry]) => entry?.path);
-  if (curriculumEntries.length === 0) {
-    return;
-  }
 
-  const sourceRoot = path.join(curriculumEntries[0][1].path, 'content', 'curriculum', courseId, chapterCode);
-  if (!(await pathExists(sourceRoot))) {
-    return;
-  }
-
+  // Copy files recursively from srcDir into destDir, skipping dotfiles, .md, and manifest files.
+  // destPath is always asserted to be inside chapterDir to prevent path traversal.
   const copyRecursive = async (srcDir, destDir) => {
     const children = await fs.readdir(srcDir, { withFileTypes: true });
     for (const child of children) {
@@ -1487,7 +1480,31 @@ const seedWorkspaceFromCurriculumIfNeeded = async (rawChapterId, chapterDir) => 
     }
   };
 
-  await copyRecursive(sourceRoot, chapterDir);
+  // 1. Seed from curriculum bundle (agent prompts, task lists, etc.)
+  const curriculumEntries = Object.entries(indexData?.curriculum || {}).filter(([, entry]) => entry?.path);
+  if (curriculumEntries.length > 0) {
+    const sourceRoot = path.join(curriculumEntries[0][1].path, 'content', 'curriculum', courseId, chapterCode);
+    if (await pathExists(sourceRoot)) {
+      await copyRecursive(sourceRoot, chapterDir);
+    }
+  }
+
+  // 2. Seed code/ and dataset(s)/ from the chapter-specific bundle.
+  //    The chapter bundle scope_id matches rawChapterId (e.g. "COURSE_CODE/chapter_code").
+  const chapterBundleKey = `${courseId}/${chapterCode}`;
+  const chapterEntry =
+    (indexData?.chapter || {})[rawChapterId] ||
+    (indexData?.chapter || {})[chapterBundleKey];
+  if (chapterEntry?.path) {
+    for (const subDir of ['code', 'dataset', 'datasets']) {
+      const srcSubDir = path.join(chapterEntry.path, subDir);
+      if (await pathExists(srcSubDir)) {
+        const destSubDir = assertInside(chapterDir, path.join(chapterDir, subDir));
+        await ensureDir(destSubDir);
+        await copyRecursive(srcSubDir, destSubDir);
+      }
+    }
+  }
 };
 
 const resolvePythonForCodeExecution = async () => {
