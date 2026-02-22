@@ -2172,10 +2172,14 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
     chapter_id: chapterId,
     desktop_context: desktopContext,
   };
-  if (backendSessionId && auth?.accessToken) {
-    sidecarBody.session_id = backendSessionId;
-    sidecarBody.backend_url = BACKEND_BASE_URL;
-    sidecarBody.auth_token = auth.accessToken;
+  if (backendSessionId) {
+    // Re-read auth in case requestBackend() performed a silent token refresh
+    const freshAuth = await loadAuthStore();
+    if (freshAuth?.accessToken) {
+      sidecarBody.session_id = backendSessionId;
+      sidecarBody.backend_url = BACKEND_BASE_URL;
+      sidecarBody.auth_token = freshAuth.accessToken;
+    }
   }
 
   const response = await fetch(`${baseUrl}/api/session/new`, {
