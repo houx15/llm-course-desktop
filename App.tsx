@@ -430,24 +430,21 @@ const App: React.FC = () => {
     }));
     setIsCodeEditorOpen(false);
 
-    try {
-      await syncQueue.enqueueProgress({
-        course_id: courseId,
-        chapter_id: chapterCode,
-        status: 'IN_PROGRESS',
-        task_snapshot: { selected_at: new Date().toISOString() },
-      });
-      await syncQueue.enqueueAnalytics({
+    syncQueue.enqueueProgress({
+      course_id: courseId,
+      chapter_id: chapterCode,
+      status: 'IN_PROGRESS',
+      task_snapshot: { selected_at: new Date().toISOString() },
+    })
+      .then(() => syncQueue.enqueueAnalytics({
         event_type: 'chapter_opened',
         event_time: new Date().toISOString(),
         course_id: courseId,
         chapter_id: chapterCode,
         payload: { source: 'desktop' },
-      });
-      await syncQueue.flushAll();
-    } catch (err) {
-      console.warn('Progress/analytics enqueue failed:', err);
-    }
+      }))
+      .then(() => syncQueue.flushAll())
+      .catch((err) => console.warn('Progress/analytics sync failed:', err));
   };
 
   const handleStartPhase = () => {

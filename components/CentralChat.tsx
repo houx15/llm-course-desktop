@@ -193,7 +193,9 @@ const CentralChat: React.FC<CentralChatProps> = ({
           response_time_ms: Date.now() - startTime,
           token_usage: tokenUsage,
         },
-      }).catch(() => {});
+      })
+        .then(() => syncQueue.flushAnalytics())
+        .catch(() => {});
 
       return true;
     } catch (error) {
