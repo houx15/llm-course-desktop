@@ -57,9 +57,13 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
         if (existing) {
           await runtimeManager.reattachSession(existing.session_id, chapter.id);
-          const turns = await runtimeManager.getSessionHistory(existing.session_id);
+          const [turns, report] = await Promise.all([
+            runtimeManager.getSessionHistory(existing.session_id),
+            runtimeManager.getDynamicReport(existing.session_id).catch(() => ''),
+          ]);
           if (cancelled) return;
           setSessionId(existing.session_id);
+          // Restore chat history
           if (turns.length === 0) {
             setMessages([{ role: 'model', text: chapter.initialMessage }]);
           } else {
@@ -70,6 +74,10 @@ const CentralChat: React.FC<CentralChatProps> = ({
               return result;
             });
             setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+          }
+          // Restore dynamic report in the roadmap panel
+          if (report) {
+            onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
           }
           return;
         }
