@@ -43,6 +43,28 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
     const init = async () => {
       try {
+        // Check for an existing session for this chapter
+        const sessions = await runtimeManager.listSessions();
+        const existing = sessions.find((s) => s.chapter_id === chapter.id);
+
+        if (existing) {
+          const turns = await runtimeManager.getSessionHistory(existing.session_id);
+          if (cancelled) return;
+          setSessionId(existing.session_id);
+          if (turns.length === 0) {
+            setMessages([{ role: 'model', text: chapter.initialMessage }]);
+          } else {
+            const msgs: Message[] = turns.flatMap((t) => {
+              const result: Message[] = [];
+              if (t.user_message) result.push({ role: 'user', text: t.user_message });
+              if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
+              return result;
+            });
+            setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+          }
+          return;
+        }
+
         const created = await runtimeManager.createSession(chapter.id);
         if (cancelled) {
           return;

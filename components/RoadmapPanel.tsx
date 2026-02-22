@@ -1,4 +1,6 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Chapter, Checkpoint } from '../types';
 import { CheckCircle2, Lock, CircleDot, Activity, ArrowUpRight, History } from 'lucide-react';
 
@@ -113,32 +115,37 @@ const RoadmapPanel: React.FC<RoadmapPanelProps> = ({ chapter, dynamicReport = ''
           </div>
         )}
 
-        {dynamicReport && (
-          <div className="p-3 bg-white rounded-lg border border-gray-200">
-            <div className="text-xs text-gray-500 font-semibold mb-1">最新报告摘要</div>
-            <p className="text-xs text-gray-700 leading-relaxed line-clamp-5">{dynamicReport}</p>
-          </div>
-        )}
       </div>
 
-      {/* Roadmap Tree */}
-      <div className="p-4 flex-1">
-        <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">学习路线图</h2>
-        
-        <div className="relative pl-2">
-          {/* Main Vertical Line */}
-          <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-200"></div>
-
-          {roadmap.sections.map((section, sIdx) => (
-            <div key={sIdx} className="mb-6 relative z-10">
-              <h3 className="text-xs font-bold text-gray-400 mb-3 pl-8 uppercase">{section.title}</h3>
-              <div className="space-y-0">
-                {section.items.map((item) => renderItem(item))}
-              </div>
+      {/* Dynamic report as primary content when no structured sections */}
+      {roadmap.sections.length === 0 ? (
+        <div className="p-4 flex-1">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">学习报告</h2>
+          {dynamicReport ? (
+            <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-headings:text-gray-700 prose-headings:font-semibold text-gray-700">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{dynamicReport}</ReactMarkdown>
             </div>
-          ))}
+          ) : (
+            <p className="text-xs text-gray-400 italic">完成第一轮对话后，学习报告将在此显示。</p>
+          )}
         </div>
-      </div>
+      ) : (
+        /* Structured roadmap tree */
+        <div className="p-4 flex-1">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">学习路线图</h2>
+          <div className="relative pl-2">
+            <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-200"></div>
+            {roadmap.sections.map((section, sIdx) => (
+              <div key={sIdx} className="mb-6 relative z-10">
+                <h3 className="text-xs font-bold text-gray-400 mb-3 pl-8 uppercase">{section.title}</h3>
+                <div className="space-y-0">
+                  {section.items.map((item) => renderItem(item))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -394,6 +394,30 @@ export const runtimeManager = {
     return String(data.report || '');
   },
 
+  async listSessions(): Promise<Array<{ session_id: string; chapter_id: string; turn_index: number }>> {
+    try {
+      const baseUrl = normalizeBaseUrl(SIDECAR_BASE_URL);
+      const response = await fetch(`${baseUrl}/api/sessions`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.sessions || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async getSessionHistory(sessionId: string): Promise<Array<{ user_message: string; companion_response: string }>> {
+    try {
+      const baseUrl = normalizeBaseUrl(SIDECAR_BASE_URL);
+      const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/history`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.turns || [];
+    } catch {
+      return [];
+    }
+  },
+
   async endSession(sessionId: string) {
     if (!window.tutorApp) {
       throw new Error('tutorApp API unavailable');
