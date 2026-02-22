@@ -73,6 +73,10 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const [files, setFiles] = useState<CodeWorkspaceFile[]>([]);
   const [activeFile, setActiveFile] = useState('');
   const [activeNotebook, setActiveNotebook] = useState('');
+  // Tracks which chapterId the current activeNotebook/files were loaded for.
+  // NotebookEditor is only rendered when this matches the current chapterId prop,
+  // preventing a stale activeNotebook from a previous chapter being read in the wrong workspace.
+  const [bootedForChapterId, setBootedForChapterId] = useState(chapterId);
   const [chapterDir, setChapterDir] = useState('');
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -224,6 +228,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       setActiveNotebook('');
       setActiveFile('');
       setFiles([]);
+      setBootedForChapterId(''); // invalidate until boot completes for new chapterId
       loadTokenRef.current += 1;
 
       try {
@@ -260,6 +265,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
           ipynbFiles[0]?.name ||
           '';
         setActiveNotebook(preferredNb);
+        setBootedForChapterId(chapterId); // state is now consistent for this chapter
 
         const preferred =
           (initialActiveFile && listed.find((file) => file.name === initialActiveFile)?.name) ||
@@ -523,13 +529,17 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {mode === 'notebook' ? (
             /* ── Notebook mode ───────────────────────────────────── */
-            activeNotebook ? (
+            bootedForChapterId === chapterId && activeNotebook ? (
               <NotebookEditor
                 chapterId={chapterId}
                 filename={activeNotebook}
                 chapterTitle={chapterTitle}
                 onSendToTutor={onSendToTutor}
               />
+            ) : bootedForChapterId !== chapterId ? (
+              <div className="flex-1 flex items-center justify-center text-gray-300 text-sm">
+                Loading workspace…
+              </div>
             ) : (
               <div className="p-4 text-sm text-gray-400">
                 No notebook found.{' '}
