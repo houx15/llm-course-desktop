@@ -4,6 +4,7 @@ import { codeWorkspace } from '../../services/codeWorkspace';
 import CodeEditorToolbar, { EditorMode } from './CodeEditorToolbar';
 import OutputPanel, { OutputChunk } from './OutputPanel';
 import NotebookEditor, { buildDefaultNotebook } from './NotebookEditor';
+import WorkspaceFileSidebar from './WorkspaceFileSidebar';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -429,8 +430,69 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     }
   };
 
+  const refreshFiles = async () => {
+    const listed = await codeWorkspace.listFiles(chapterId).catch(() => [] as CodeWorkspaceFile[]);
+    setFiles(listed);
+  };
+
+  const handleNewFile = async (filename: string) => {
+    const isNotebook = filename.toLowerCase().endsWith('.ipynb');
+    const defaultContent = isNotebook
+      ? buildDefaultNotebook(chapterTitle || filename)
+      : buildDefaultScript(chapterId, filename.replace(/\.[^.]+$/, ''));
+    await codeWorkspace.createFile(chapterId, filename, defaultContent);
+    await refreshFiles();
+    if (isNotebook) {
+      setActiveNotebook(filename);
+      setMode('notebook');
+    } else {
+      flushPendingSave();
+      setActiveFile(filename);
+      onActiveFileChange?.(filename);
+      loadTokenRef.current += 1;
+      setMode('script');
+      await readFileIntoEditor(filename);
+    }
+  };
+
+  const handleDeleteFile = async (filename: string) => {
+    await codeWorkspace.deleteFile(chapterId, filename);
+    await refreshFiles();
+    // If the deleted file was active, pick another
+    setFiles((prev) => {
+      const remaining = prev.filter((f) => f.name !== filename);
+      if (filename === activeFile && remaining.length > 0) {
+        const next = remaining[0].name;
+        setActiveFile(next);
+        onActiveFileChange?.(next);
+        loadTokenRef.current += 1;
+        readFileIntoEditor(next);
+      }
+      if (filename === activeNotebook) {
+        const nextNb = remaining.find((f) => f.name.toLowerCase().endsWith('.ipynb'));
+        setActiveNotebook(nextNb?.name || '');
+      }
+      return remaining;
+    });
+  };
+
+  const handleSidebarSelectFile = (filename: string) => {
+    const isNotebook = filename.toLowerCase().endsWith('.ipynb');
+    if (isNotebook) {
+      setActiveNotebook(filename);
+      setMode('notebook');
+    } else {
+      flushPendingSave();
+      setMode('script');
+      handleSelectFile(filename);
+    }
+  };
+
   const editorLanguage = getLanguageFromFilename(activeFile);
   const highlightedLanguage = editorLanguage === 'plaintext' ? 'text' : editorLanguage;
+
+  // The active file shown in the sidebar is the notebook (in notebook mode) or the script file
+  const sidebarActiveFile = mode === 'notebook' ? activeNotebook : activeFile;
 
   return (
     <div className={`h-full flex flex-col bg-white min-w-0 ${visible ? 'border-l border-gray-200' : 'border-l-0'}`}>
@@ -452,106 +514,113 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         onOpenJupyter={handleOpenJupyter}
       />
 
-      {mode === 'notebook' ? (
-        /* ── Notebook mode ─────────────────────────────────────────── */
-        activeNotebook ? (
-          <NotebookEditor
-            chapterId={chapterId}
-            filename={activeNotebook}
-            chapterTitle={chapterTitle}
-            onSendToTutor={onSendToTutor}
-          />
-        ) : (
-          <div className="p-4 text-sm text-gray-400">No notebook file found. Switch to Script mode to create one.</div>
-        )
-      ) : (
-        /* ── Script mode ───────────────────────────────────────────── */
-        <>
-          <div className="px-2 py-1.5 border-b border-gray-100 bg-gray-50 flex items-center gap-1 overflow-x-auto">
-            {files.map((file) => (
-              <button
-                key={file.name}
-                onClick={() => handleSelectFile(file.name)}
-                className={`px-2 py-1 rounded text-xs whitespace-nowrap border ${
-                  file.name === activeFile
-                    ? 'bg-white border-gray-300 text-gray-900'
-                    : 'bg-transparent border-transparent text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                {file.name}
-              </button>
-            ))}
-            {didCopy && <span className="ml-auto text-[11px] text-emerald-600">Copied</span>}
-          </div>
+      {/* ── Body: sidebar + editor side-by-side ── */}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <WorkspaceFileSidebar
+          files={files}
+          activeFile={sidebarActiveFile}
+          chapterDir={chapterDir}
+          onSelectFile={handleSidebarSelectFile}
+          onNewFile={handleNewFile}
+          onDeleteFile={handleDeleteFile}
+          onOpenFolder={chapterDir ? handleOpenFolder : undefined}
+          onRefresh={refreshFiles}
+        />
 
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-[240px] relative">
-              {loadError && (
-                <div className="absolute z-20 top-2 right-2 bg-red-50 text-red-600 border border-red-200 text-xs px-2 py-1 rounded">
-                  {loadError}
-                </div>
-              )}
-
-              {monacoEditor ? (
-                React.createElement(monacoEditor, {
-                  value: code,
-                  onChange: (value: string | undefined) => setCode(value || ''),
-                  language: editorLanguage,
-                  theme: 'vs-light',
-                  loading: <div className="text-xs text-gray-500 p-3">Loading editor...</div>,
-                  options: {
-                    automaticLayout: true,
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    lineNumbersMinChars: 3,
-                    wordWrap: 'on',
-                    tabSize: 4,
-                    scrollBeyondLastLine: false,
-                  },
-                })
-              ) : (
-                <div className="absolute inset-0 bg-white">
-                  <div ref={fallbackHighlightRef} aria-hidden className="absolute inset-0 overflow-auto pointer-events-none">
-                    <SyntaxHighlighter
-                      language={highlightedLanguage}
-                      style={vs}
-                      PreTag="div"
-                      customStyle={{
-                        margin: 0,
-                        borderRadius: 0,
-                        background: 'transparent',
-                        minHeight: '100%',
-                        padding: '12px',
-                        fontSize: '13px',
-                        lineHeight: '1.5rem',
-                      }}
-                    >
-                      {code || ' '}
-                    </SyntaxHighlighter>
+        {/* ── Right: editor area ── */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          {mode === 'notebook' ? (
+            /* ── Notebook mode ───────────────────────────────────── */
+            activeNotebook ? (
+              <NotebookEditor
+                chapterId={chapterId}
+                filename={activeNotebook}
+                chapterTitle={chapterTitle}
+                onSendToTutor={onSendToTutor}
+              />
+            ) : (
+              <div className="p-4 text-sm text-gray-400">
+                No notebook found.{' '}
+                <button
+                  className="underline text-blue-500"
+                  onClick={() => handleNewFile(`${chapterId.split('/').pop() || 'notebook'}.ipynb`)}
+                >
+                  Create one
+                </button>
+              </div>
+            )
+          ) : (
+            /* ── Script mode ─────────────────────────────────────── */
+            <>
+              <div className="flex-1 min-h-[240px] relative">
+                {loadError && (
+                  <div className="absolute z-20 top-2 right-2 bg-red-50 text-red-600 border border-red-200 text-xs px-2 py-1 rounded">
+                    {loadError}
                   </div>
-                  <textarea
-                    ref={fallbackEditorRef}
-                    value={code}
-                    onChange={(event) => setCode(event.target.value)}
-                    onKeyDown={handleFallbackKeyDown}
-                    onScroll={syncFallbackScroll}
-                    className="absolute inset-0 p-3 resize-none border-0 outline-none bg-transparent font-mono text-[13px] leading-6 text-transparent caret-black selection:bg-blue-200/70 overflow-auto"
-                    spellCheck={false}
-                  />
-                </div>
-              )}
-              {!monacoLoadDone && (
-                <div className="absolute top-2 left-3 text-xs text-gray-500 bg-white/85 px-2 py-0.5 rounded">Loading editor module...</div>
-              )}
-              {isLoading && <div className="absolute left-3 top-3 text-xs text-gray-500">Loading file...</div>}
-            </div>
+                )}
 
-            <div className="h-56 shrink-0">
-              <OutputPanel chunks={outputChunks} onClear={handleClearOutput} onSendToChatInput={handleSendToChatInput} />
-            </div>
-          </div>
-        </>
-      )}
+                {monacoEditor ? (
+                  React.createElement(monacoEditor, {
+                    value: code,
+                    onChange: (value: string | undefined) => setCode(value || ''),
+                    language: editorLanguage,
+                    theme: 'vs-light',
+                    loading: <div className="text-xs text-gray-500 p-3">Loading editor...</div>,
+                    options: {
+                      automaticLayout: true,
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbersMinChars: 3,
+                      wordWrap: 'on',
+                      tabSize: 4,
+                      scrollBeyondLastLine: false,
+                    },
+                  })
+                ) : (
+                  <div className="absolute inset-0 bg-white">
+                    <div ref={fallbackHighlightRef} aria-hidden className="absolute inset-0 overflow-auto pointer-events-none">
+                      <SyntaxHighlighter
+                        language={highlightedLanguage}
+                        style={vs}
+                        PreTag="div"
+                        customStyle={{
+                          margin: 0,
+                          borderRadius: 0,
+                          background: 'transparent',
+                          minHeight: '100%',
+                          padding: '12px',
+                          fontSize: '13px',
+                          lineHeight: '1.5rem',
+                        }}
+                      >
+                        {code || ' '}
+                      </SyntaxHighlighter>
+                    </div>
+                    <textarea
+                      ref={fallbackEditorRef}
+                      value={code}
+                      onChange={(event) => setCode(event.target.value)}
+                      onKeyDown={handleFallbackKeyDown}
+                      onScroll={syncFallbackScroll}
+                      className="absolute inset-0 p-3 resize-none border-0 outline-none bg-transparent font-mono text-[13px] leading-6 text-transparent caret-black selection:bg-blue-200/70 overflow-auto"
+                      spellCheck={false}
+                    />
+                  </div>
+                )}
+                {!monacoLoadDone && (
+                  <div className="absolute top-2 left-3 text-xs text-gray-500 bg-white/85 px-2 py-0.5 rounded">Loading editor module...</div>
+                )}
+                {isLoading && <div className="absolute left-3 top-3 text-xs text-gray-500">Loading file...</div>}
+                {didCopy && <div className="absolute top-2 right-2 text-[11px] text-emerald-600">Copied</div>}
+              </div>
+
+              <div className="h-56 shrink-0">
+                <OutputPanel chunks={outputChunks} onClear={handleClearOutput} onSendToChatInput={handleSendToChatInput} />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

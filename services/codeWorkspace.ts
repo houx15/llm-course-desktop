@@ -61,6 +61,13 @@ export const codeWorkspace = {
     return String(result?.content || '');
   },
 
+  async deleteFile(chapterId: string, filename: string) {
+    if (!window.tutorApp) {
+      throw new Error('tutorApp API unavailable');
+    }
+    return window.tutorApp.deleteCodeFile({ chapterId, filename });
+  },
+
   async writeFile(chapterId: string, filename: string, content: string) {
     if (!window.tutorApp) {
       throw new Error('tutorApp API unavailable');

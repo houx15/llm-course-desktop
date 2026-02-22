@@ -284,6 +284,7 @@ declare global {
       readCodeFile: (payload: { chapterId: string; filename: string }) => Promise<{ content: string; filePath: string }>;
       writeCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string; bytes: number }>;
       listCodeFiles: (payload: { chapterId: string }) => Promise<{ files: CodeWorkspaceFile[] }>;
+      deleteCodeFile: (payload: { chapterId: string; filename: string }) => Promise<{ deleted: boolean; filePath: string }>;
       executeCode: (payload: {
         chapterId: string;
         code: string;

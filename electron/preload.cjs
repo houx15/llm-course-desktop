@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('tutorApp', {
   readCodeFile: (payload) => ipcRenderer.invoke('code:readFile', payload),
   writeCodeFile: (payload) => ipcRenderer.invoke('code:writeFile', payload),
   listCodeFiles: (payload) => ipcRenderer.invoke('code:listFiles', payload),
+  deleteCodeFile: (payload) => ipcRenderer.invoke('code:deleteFile', payload),
   executeCode: (payload) => ipcRenderer.invoke('code:execute', payload),
   killCodeExecution: (payload) => ipcRenderer.invoke('code:kill', payload),
   onCodeOutput: (callback) => {

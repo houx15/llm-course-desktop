@@ -2173,6 +2173,16 @@ ipcMain.handle('code:writeFile', async (_event, payload) => {
   return { filePath, bytes: Buffer.byteLength(content, 'utf-8') };
 });
 
+ipcMain.handle('code:deleteFile', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  const relPath = normalizeWorkspaceRelativePath(payload?.filename);
+  if (!rawChapterId) throw new Error('Missing chapterId');
+  const { chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  const filePath = assertInside(chapterDir, path.join(chapterDir, relPath));
+  await fs.rm(filePath, { force: true });
+  return { deleted: true, filePath };
+});
+
 ipcMain.handle('code:execute', async (event, payload) => {
   const rawChapterId = String(payload?.chapterId || '').trim();
   const code = String(payload?.code || '');
