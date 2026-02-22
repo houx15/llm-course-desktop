@@ -103,3 +103,21 @@ export const backendClient = {
     return backendClient.request<T>('POST', path, body, withAuth);
   },
 };
+
+export interface SessionStateResult {
+  has_data: boolean;
+  session_id?: string;
+  turns?: Array<{
+    turn_index: number;
+    user_message: string;
+    companion_response: string;
+    turn_outcome: Record<string, unknown>;
+    created_at: string;
+  }>;
+  memory?: Record<string, unknown>;
+  report_md?: string;
+}
+
+export const fetchSessionState = (chapterId: string): Promise<SessionStateResult> => {
+  return backendClient.get<SessionStateResult>(`/v1/chapters/${encodeURIComponent(chapterId)}/session-state`);
+};

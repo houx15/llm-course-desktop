@@ -2143,18 +2143,45 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
     throw new Error('Missing chapterId');
   }
 
+  // Derive courseId from chapterId (format: 'courseId/chapterCode' or just 'chapterCode')
+  const courseId = chapterId.includes('/') ? chapterId.split('/')[0] : null;
+
+  // Step 1: Register session with backend (best-effort — failure falls back to local-only mode)
+  let backendSessionId;
+  const auth = await loadAuthStore();
+  if (auth?.accessToken) {
+    try {
+      const backendResp = await requestBackend({
+        method: 'POST',
+        path: `/v1/chapters/${encodeURIComponent(chapterId)}/sessions`,
+        body: { course_id: courseId },
+        withAuth: true,
+      });
+      if (backendResp.ok && backendResp.data?.session_id) {
+        backendSessionId = backendResp.data.session_id;
+      }
+    } catch (err) {
+      console.warn('[runtime:createSession] Backend registration failed, continuing local-only:', err?.message);
+    }
+  }
+
   const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
   const desktopContext = await buildSidecarSessionContext(chapterId);
 
+  const sidecarBody = {
+    chapter_id: chapterId,
+    desktop_context: desktopContext,
+  };
+  if (backendSessionId && auth?.accessToken) {
+    sidecarBody.session_id = backendSessionId;
+    sidecarBody.backend_url = BACKEND_BASE_URL;
+    sidecarBody.auth_token = auth.accessToken;
+  }
+
   const response = await fetch(`${baseUrl}/api/session/new`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      chapter_id: chapterId,
-      desktop_context: desktopContext,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sidecarBody),
   });
 
   const parsed = await parseBackendResponse(response);
