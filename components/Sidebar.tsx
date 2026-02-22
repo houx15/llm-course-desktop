@@ -28,7 +28,8 @@ const Sidebar: React.FC<SidebarProps> = ({ phases, currentChapterId, currentPhas
   const renderStatusIcon = (status: string, isActive: boolean) => {
     if (status === 'LOCKED') return <Lock size={12} className="text-gray-400" />;
     if (status === 'COMPLETED') return <CheckCircle2 size={12} className="text-green-500" />;
-    // In progress
+    if (status === 'NOT_STARTED') return <div className="w-2 h-2 rounded-full bg-gray-300" />;
+    // IN_PROGRESS
     if (isActive) {
       return <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />;
     }

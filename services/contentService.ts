@@ -55,7 +55,7 @@ export const contentService = {
       const chapter: Chapter = {
         id: `${entry.courseId}/${entry.chapterId}`,
         title: normalizeTitle(entry.title, entry.chapterId),
-        status: 'IN_PROGRESS',
+        status: 'NOT_STARTED',
         initialMessage: buildInitialMessage(content),
         roadmap: defaultRoadmap,
         resources: [],
