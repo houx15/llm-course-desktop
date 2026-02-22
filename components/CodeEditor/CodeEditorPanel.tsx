@@ -524,13 +524,16 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       });
 
       // Direct PUT to OSS
-      await fetch(presigned_url, { method: 'PUT', body: blob });
+      const ossResponse = await fetch(presigned_url, { method: 'PUT', body: blob });
+      if (!ossResponse.ok) {
+        throw new Error(`OSS upload failed: ${ossResponse.status}`);
+      }
 
       // Confirm with backend
       await confirmWorkspaceUpload({ ossKey: oss_key, filename, chapterId, fileSizeBytes });
 
       setSubmitDone(true);
-      setTimeout(() => setSubmitDone(false), 2000);
+      window.setTimeout(() => setSubmitDone(false), 2000);
     } catch (err: unknown) {
       console.warn('[CodeEditor] File submit failed:', err);
     } finally {
