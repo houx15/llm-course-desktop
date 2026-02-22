@@ -1149,14 +1149,6 @@ const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
     '--quiet',
   ]);
 
-  // 6. pip install Jupyter packages for in-app notebook mode (idempotent)
-  sendProgress('installing_deps', { percent: 88, status: '正在安装 Jupyter 环境...' });
-  await runSubprocess(pipBin, [
-    'install', 'jupyter', 'notebook', 'ipykernel',
-    '--index-url', runtimeConfig.pip_index_url,
-    '--trusted-host', 'mirrors.tuna.tsinghua.edu.cn',
-    '--quiet',
-  ]);
   sendProgress('installing_deps', { percent: 95, status: '正在安装依赖包...' });
 };
 
