@@ -93,53 +93,54 @@ const CentralChat: React.FC<CentralChatProps> = ({
             onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
           }
           setSessionStarted(true);
-        }
-        // No existing local session — check backend for cross-device recovery
-      try {
-        const state = await fetchSessionState(chapter.id);
-        if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
-          if (cancelled) return;
-          setRecovering(true);
-          // Write recovered data to sidecar sessions directory
-          await window.tutorApp!.restoreSessionState({
-            sessionId: state.session_id,
-            turns: state.turns,
-            memoryJson: state.memory ?? {},
-            reportMd: state.report_md ?? '',
-          });
-          // Reattach the restored session in sidecar
-          await runtimeManager.reattachSession(state.session_id, chapter.id);
-          const [sidecarTurns, report] = await Promise.all([
-            runtimeManager.getSessionHistory(state.session_id),
-            runtimeManager.getDynamicReport(state.session_id).catch(() => ''),
-          ]);
-          if (cancelled) return;
-          setRecovering(false);
-          setSessionId(state.session_id);
-          // Build messages: prefer sidecar turns, fall back to backend turns
-          const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : state.turns.map((t) => ({
-            user_message: t.user_message,
-            companion_response: t.companion_response,
-          }));
-          const msgs: Message[] = sourceTurns.flatMap((t) => {
-            const result: Message[] = [];
-            if (t.user_message) result.push({ role: 'user', text: t.user_message });
-            if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
-            return result;
-          });
-          setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
-          if (report) {
-            onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
+        } else {
+          // No existing local session — check backend for cross-device recovery
+          try {
+            const state = await fetchSessionState(chapter.id);
+            if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
+              if (cancelled) return;
+              setRecovering(true);
+              // Write recovered data to sidecar sessions directory
+              await window.tutorApp!.restoreSessionState({
+                sessionId: state.session_id,
+                turns: state.turns,
+                memoryJson: state.memory ?? {},
+                reportMd: state.report_md ?? '',
+              });
+              // Reattach the restored session in sidecar
+              await runtimeManager.reattachSession(state.session_id, chapter.id);
+              const [sidecarTurns, report] = await Promise.all([
+                runtimeManager.getSessionHistory(state.session_id),
+                runtimeManager.getDynamicReport(state.session_id).catch(() => ''),
+              ]);
+              if (cancelled) return;
+              setRecovering(false);
+              setSessionId(state.session_id);
+              // Build messages: prefer sidecar turns, fall back to backend turns
+              const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : state.turns.map((t) => ({
+                user_message: t.user_message,
+                companion_response: t.companion_response,
+              }));
+              const msgs: Message[] = sourceTurns.flatMap((t) => {
+                const result: Message[] = [];
+                if (t.user_message) result.push({ role: 'user', text: t.user_message });
+                if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
+                return result;
+              });
+              setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+              if (report) {
+                onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
+              }
+              setSessionStarted(true);
+            }
+            // has_data: false → fall through to landing screen
+          } catch (err) {
+            if (cancelled) return;
+            console.warn('[CentralChat] Recovery check failed, starting fresh:', err);
+            setRecovering(false);
           }
-          setSessionStarted(true);
         }
-        // has_data: false → fall through to landing screen
-      } catch (err) {
-        if (cancelled) return;
-        console.warn('[CentralChat] Recovery check failed, starting fresh:', err);
-        setRecovering(false);
-      }
-      // No session found anywhere → show landing screen, wait for user to click "开启本章学习"
+        // No session found anywhere → show landing screen, wait for user to click "开启本章学习"
       } catch (error) {
         if (cancelled) return;
         // On error checking sessions, also show landing screen
