@@ -156,6 +156,14 @@ const defaultSettings = () => ({
   llmBaseUrl: '',
   devLocalSidecar: false,
 });
+const USER_SCOPED_SETTINGS_KEYS = new Set([
+  'rememberKeys',
+  'modelConfigs',
+  'activeProvider',
+  'llmFormat',
+  'llmBaseUrl',
+  'devLocalSidecar',
+]);
 
 // Fixed URL constants — not user-configurable
 const BACKEND_BASE_URL = process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723';
@@ -170,10 +178,37 @@ const defaultAuthState = () => ({
 
 const getTutorRoot = (settings) => path.join(settings.storageRoot || app.getPath('userData'), 'TutorApp');
 const getBundlesRoot = (settings) => path.join(getTutorRoot(settings), 'bundles');
-const getWorkspaceRoot = (settings) => path.join(getTutorRoot(settings), 'workspace');
-const getSessionsRoot = (settings) => path.join(getTutorRoot(settings), 'sessions');
-const getQueueDir = (settings) => path.join(getTutorRoot(settings), 'queue');
 const getIndexPath = (settings) => path.join(getTutorRoot(settings), 'active_index.json');
+
+const decodeJwtPayload = (token) => {
+  const raw = String(token || '').trim();
+  if (!raw) return null;
+  const parts = raw.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    return safeJson(Buffer.from(padded, 'base64').toString('utf-8'), null);
+  } catch {
+    return null;
+  }
+};
+
+const resolveUserSegmentFromAuth = (auth) => {
+  const sub = String(decodeJwtPayload(auth?.accessToken)?.sub || '').trim();
+  if (!sub) return 'anonymous';
+  return sanitizeSegment(sub) || 'anonymous';
+};
+
+const getUserDataRoot = async (settings) => {
+  const auth = await loadAuthStore();
+  const userSegment = resolveUserSegmentFromAuth(auth);
+  return path.join(getTutorRoot(settings), 'users', userSegment);
+};
+
+const getWorkspaceRoot = async (settings) => path.join(await getUserDataRoot(settings), 'workspace');
+const getSessionsRoot = async (settings) => path.join(await getUserDataRoot(settings), 'sessions');
+const getQueueDir = async (settings) => path.join(await getUserDataRoot(settings), 'queue');
 
 const safeJson = (text, fallback) => {
   try {
@@ -294,15 +329,65 @@ const saveSecureStore = async (filePath, value) => {
 };
 
 const loadSettings = async () => {
-  const stored = await loadPlainStore(settingsFilePath, defaultSettings());
-  return { ...defaultSettings(), ...stored };
+  const defaults = defaultSettings();
+  const stored = await loadPlainStore(settingsFilePath, defaults);
+  const auth = await loadAuthStore();
+  const userSegment = resolveUserSegmentFromAuth(auth);
+  const userProfiles = typeof stored?.userProfiles === 'object' && stored?.userProfiles ? stored.userProfiles : {};
+  const userScoped = typeof userProfiles?.[userSegment] === 'object' && userProfiles?.[userSegment]
+    ? userProfiles[userSegment]
+    : {};
+
+  // Backward-compatible fallback: if no user profile exists yet, use legacy root values.
+  const legacyScoped = {};
+  for (const key of USER_SCOPED_SETTINGS_KEYS) {
+    if (stored?.[key] !== undefined) {
+      legacyScoped[key] = stored[key];
+    }
+  }
+
+  const merged = {
+    ...defaults,
+    ...stored,
+    ...legacyScoped,
+    ...userScoped,
+  };
+  delete merged.userProfiles;
+  return merged;
 };
 
 const saveSettings = async (patch) => {
-  const current = await loadSettings();
-  const next = { ...current, ...(patch || {}) };
-  await savePlainStore(settingsFilePath, next);
-  return next;
+  const defaults = defaultSettings();
+  const stored = await loadPlainStore(settingsFilePath, defaults);
+  const auth = await loadAuthStore();
+  const userSegment = resolveUserSegmentFromAuth(auth);
+  const rawPatch = patch || {};
+
+  const userProfiles = typeof stored?.userProfiles === 'object' && stored?.userProfiles
+    ? { ...stored.userProfiles }
+    : {};
+  const existingUserProfile = typeof userProfiles?.[userSegment] === 'object' && userProfiles?.[userSegment]
+    ? { ...userProfiles[userSegment] }
+    : {};
+
+  const globalPatch = {};
+  const userPatch = {};
+  for (const [key, value] of Object.entries(rawPatch)) {
+    if (USER_SCOPED_SETTINGS_KEYS.has(key)) {
+      userPatch[key] = value;
+    } else {
+      globalPatch[key] = value;
+    }
+  }
+
+  const nextStored = { ...stored, ...globalPatch };
+  if (Object.keys(userPatch).length > 0) {
+    userProfiles[userSegment] = { ...existingUserProfile, ...userPatch };
+    nextStored.userProfiles = userProfiles;
+  }
+
+  await savePlainStore(settingsFilePath, nextStored);
+  return loadSettings();
 };
 
 const loadAuthStore = async () => {
@@ -314,12 +399,54 @@ const saveAuthStore = async (patch) => {
   const current = await loadAuthStore();
   const next = { ...current, ...(patch || {}) };
   await saveSecureStore(authFilePath, next);
+  const prevUser = resolveUserSegmentFromAuth(current);
+  const nextUser = resolveUserSegmentFromAuth(next);
+  if (prevUser !== nextUser) {
+    // User switched on this device. Stop processes bound to the previous user's local data roots.
+    runtimeIntentionalStop = true;
+    if (runtimeRestartTimer) {
+      clearTimeout(runtimeRestartTimer);
+      runtimeRestartTimer = null;
+    }
+    if (runtimeProcess) {
+      runtimeProcess.kill();
+      runtimeProcess = null;
+    }
+    for (const chapterSegment of codeExecutionByChapter.keys()) {
+      killCodeExecution(chapterSegment, true);
+    }
+    for (const { process: proc } of jupyterServers.values()) {
+      try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+    }
+    jupyterServers.clear();
+  }
   return next;
 };
 
 const clearAuthStore = async () => {
-  const next = { ...defaultAuthState(), deviceId: (await loadAuthStore()).deviceId || `desktop-${randomUUID()}` };
+  const current = await loadAuthStore();
+  const next = { ...defaultAuthState(), deviceId: current.deviceId || `desktop-${randomUUID()}` };
   await saveSecureStore(authFilePath, next);
+  const prevUser = resolveUserSegmentFromAuth(current);
+  const nextUser = resolveUserSegmentFromAuth(next);
+  if (prevUser !== nextUser) {
+    runtimeIntentionalStop = true;
+    if (runtimeRestartTimer) {
+      clearTimeout(runtimeRestartTimer);
+      runtimeRestartTimer = null;
+    }
+    if (runtimeProcess) {
+      runtimeProcess.kill();
+      runtimeProcess = null;
+    }
+    for (const chapterSegment of codeExecutionByChapter.keys()) {
+      killCodeExecution(chapterSegment, true);
+    }
+    for (const { process: proc } of jupyterServers.values()) {
+      try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+    }
+    jupyterServers.clear();
+  }
   return next;
 };
 
@@ -330,6 +457,26 @@ const loadSecretStore = async () => {
 const saveSecretStore = async (value) => {
   await saveSecureStore(secretsFilePath, value);
   return value;
+};
+
+const loadUserSecretContext = async () => {
+  const store = await loadSecretStore();
+  const auth = await loadAuthStore();
+  const userSegment = resolveUserSegmentFromAuth(auth);
+  const userKeys = typeof store?.userKeys === 'object' && store?.userKeys ? { ...store.userKeys } : {};
+  let scoped = typeof userKeys?.[userSegment] === 'object' && userKeys?.[userSegment]
+    ? { ...userKeys[userSegment] }
+    : {};
+  if (Object.keys(scoped).length === 0) {
+    // Backward-compatible fallback for legacy flat shape: { provider: key }.
+    for (const [key, value] of Object.entries(store || {})) {
+      if (key === 'userKeys') continue;
+      if (typeof value === 'string') {
+        scoped[key] = value;
+      }
+    }
+  }
+  return { store, userSegment, userKeys, scoped };
 };
 
 const sanitizeSegment = (input) => String(input || '').replace(/[^\w\-.]/g, '_');
@@ -504,7 +651,7 @@ const requestBackend = async (payload = {}) => {
 
 const queueFileFor = async (name) => {
   const settings = await loadSettings();
-  const dir = getQueueDir(settings);
+  const dir = await getQueueDir(settings);
   await ensureDir(dir);
   const normalized = sanitizeSegment(name || 'default');
   return path.join(dir, `${normalized}.jsonl`);
@@ -512,7 +659,7 @@ const queueFileFor = async (name) => {
 
 const deadLetterFileFor = async (name) => {
   const settings = await loadSettings();
-  const dir = getQueueDir(settings);
+  const dir = await getQueueDir(settings);
   await ensureDir(dir);
   const normalized = sanitizeSegment(name || 'default');
   return path.join(dir, `${normalized}.deadletter.jsonl`);
@@ -858,23 +1005,25 @@ ipcMain.handle('auth:clear', async () => {
 ipcMain.handle('secrets:saveLlmKey', async (_event, payload) => {
   const provider = sanitizeSegment(payload?.provider || 'default');
   const key = String(payload?.key || '');
-  const store = await loadSecretStore();
-  store[provider] = key;
-  await saveSecretStore(store);
+  const { store, userSegment, userKeys, scoped } = await loadUserSecretContext();
+  scoped[provider] = key;
+  userKeys[userSegment] = scoped;
+  await saveSecretStore({ ...store, userKeys });
   return { saved: true };
 });
 
 ipcMain.handle('secrets:getLlmKey', async (_event, provider) => {
   const normalized = sanitizeSegment(provider || 'default');
-  const store = await loadSecretStore();
-  return { key: store[normalized] || '' };
+  const { scoped } = await loadUserSecretContext();
+  return { key: scoped[normalized] || '' };
 });
 
 ipcMain.handle('secrets:deleteLlmKey', async (_event, provider) => {
   const normalized = sanitizeSegment(provider || 'default');
-  const store = await loadSecretStore();
-  delete store[normalized];
-  await saveSecretStore(store);
+  const { store, userSegment, userKeys, scoped } = await loadUserSecretContext();
+  delete scoped[normalized];
+  userKeys[userSegment] = scoped;
+  await saveSecretStore({ ...store, userKeys });
   return { deleted: true };
 });
 
@@ -1527,7 +1676,7 @@ const resolvePythonRuntimeBundle = async (indexData) => {
 
 const ensureChapterWorkspaceDir = async (rawChapterId) => {
   const settings = await loadSettings();
-  const workspaceRoot = getWorkspaceRoot(settings);
+  const workspaceRoot = await getWorkspaceRoot(settings);
   await ensureDir(workspaceRoot);
 
   const chapterSegment = sanitizeSegment(rawChapterId);
@@ -1994,7 +2143,8 @@ const startRuntimeInternal = async (config, options = {}) => {
     };
   }
 
-  await ensureDir(getSessionsRoot(settings));
+  const sessionsRoot = await getSessionsRoot(settings);
+  await ensureDir(sessionsRoot);
 
   // Resolve the base URL: if the user left it blank, pick a sensible default per provider.
   const providerDefaultBaseUrl = {
@@ -2016,12 +2166,12 @@ const startRuntimeInternal = async (config, options = {}) => {
     EXPERTS_DIR: expertsBundle ? path.join(expertsBundle, 'experts') : '',
     MAIN_AGENTS_DIR: appAgentsBundle ? path.join(appAgentsBundle, 'content', 'agents') : process.env.MAIN_AGENTS_DIR || '',
     CURRICULUM_TEMPLATES_DIR: templatesBundlePath || '',
-    SESSIONS_DIR: getSessionsRoot(settings),
+    SESSIONS_DIR: sessionsRoot,
     PYTHON_RUNTIME_ROOT: bundledRuntime?.bundleRoot || '',
     HOST: '127.0.0.1',
     PORT: '8000',
     TUTOR_ROOT: tutorRoot,
-    LOG_FILE: path.join(getSessionsRoot(settings), 'sidecar.log'),
+    LOG_FILE: path.join(sessionsRoot, 'sidecar.log'),
   };
 
   runtimeProcess = spawn(
@@ -2133,7 +2283,8 @@ ipcMain.handle('runtime:preflight', async () => {
 
 ipcMain.handle('runtime:getLogs', async () => {
   const settings = await loadSettings();
-  const logFile = path.join(getSessionsRoot(settings), 'sidecar.log');
+  const sessionsRoot = await getSessionsRoot(settings);
+  const logFile = path.join(sessionsRoot, 'sidecar.log');
   return { stderr: runtimeStderrBuffer, logFile };
 });
 
@@ -2227,7 +2378,8 @@ ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
 
 ipcMain.handle('session:restore', async (_event, { sessionId, turns, memoryJson, reportMd }) => {
   const settings = await loadSettings();
-  const sessionsDir = path.join(getSessionsRoot(settings), sessionId);
+  const sessionsRoot = await getSessionsRoot(settings);
+  const sessionsDir = path.join(sessionsRoot, sessionId);
 
   await fs.mkdir(sessionsDir, { recursive: true });
 
