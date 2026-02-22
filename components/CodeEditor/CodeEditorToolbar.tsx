@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClipboardCopy, Folder, Loader2, Play, Send, Square, Trash2 } from 'lucide-react';
+import { ClipboardCopy, Loader2, Play, Send, Square } from 'lucide-react';
 import { CodeWorkspaceFile } from '../../types';
 
 export type EditorMode = 'notebook' | 'script';
@@ -39,8 +39,6 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
   onOpenFolder,
   onOpenJupyter,
 }) => {
-  const shortDir = chapterDir ? chapterDir.split('/').slice(-2).join('/') : '';
-
   return (
     <div className="px-3 py-2 border-b border-gray-200 bg-white flex items-center justify-between gap-2">
       <div className="flex items-center gap-2 min-w-0">
@@ -70,18 +68,6 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
 
         {mode === 'script' && (
           <>
-            <select
-              value={activeFile}
-              onChange={(e) => onSelectFile(e.target.value)}
-              className="max-w-[200px] min-w-[100px] text-xs border border-gray-200 rounded px-2 py-1.5 bg-white"
-            >
-              {files.map((file) => (
-                <option key={file.name} value={file.name}>
-                  {file.name}
-                </option>
-              ))}
-            </select>
-
             {!isRunning ? (
               <button
                 onClick={onRun}
@@ -134,27 +120,8 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
       </div>
 
       <div className="flex items-center gap-1">
-        {chapterDir && onOpenFolder && (
-          <button
-            onClick={onOpenFolder}
-            className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-800"
-            title={chapterDir}
-          >
-            <Folder size={13} />
-            <span className="max-w-[120px] truncate hidden sm:inline">{shortDir}</span>
-          </button>
-        )}
-
         {mode === 'script' && (
           <>
-            <button
-              onClick={onClearOutput}
-              disabled={!hasOutput}
-              className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Trash2 size={13} />
-              Clear
-            </button>
             <button
               onClick={onCopyOutput}
               disabled={!hasOutput}
