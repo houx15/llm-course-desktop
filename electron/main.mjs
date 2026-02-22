@@ -49,6 +49,103 @@ const findFreePort = () =>
     srv.on('error', reject);
   });
 
+// ─── Orphaned process cleanup ────────────────────────────────────────────────
+
+const JUPYTER_PID_REGISTRY_PATH = path.join(userDataDir, 'jupyter_pids.json');
+
+// Run a command and return stdout (empty string on any error)
+const runCommand = (cmd, args) =>
+  new Promise((resolve) => {
+    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+    let out = '';
+    proc.stdout?.on('data', (d) => { out += d.toString(); });
+    proc.on('close', () => resolve(out.trim()));
+    proc.on('error', () => resolve(''));
+  });
+
+async function readJupyterPidRegistry() {
+  try {
+    const raw = await fs.readFile(JUPYTER_PID_REGISTRY_PATH, 'utf-8');
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+async function writeJupyterPidRegistry(entries) {
+  try {
+    await fs.writeFile(JUPYTER_PID_REGISTRY_PATH, JSON.stringify(entries, null, 2), 'utf-8');
+  } catch { /* ignore */ }
+}
+
+async function addJupyterPidEntry(entry) {
+  const entries = await readJupyterPidRegistry();
+  entries.push(entry);
+  await writeJupyterPidRegistry(entries);
+}
+
+async function removeJupyterPidEntry(pid) {
+  const entries = await readJupyterPidRegistry();
+  const updated = entries.filter((e) => e.pid !== pid);
+  await writeJupyterPidRegistry(updated);
+}
+
+// Returns true only if the given PID maps to a Jupyter process (prevents PID-reuse kills)
+async function isJupyterProcess(pid) {
+  try {
+    if (process.platform === 'win32') {
+      const out = await runCommand('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH']);
+      const lower = out.toLowerCase();
+      return lower.includes('jupyter') || lower.includes('python');
+    } else {
+      const out = await runCommand('ps', ['-p', String(pid), '-o', 'args=']);
+      return out.toLowerCase().includes('jupyter');
+    }
+  } catch {
+    return false;
+  }
+}
+
+// Kill any Jupyter processes from the previous session (run at startup)
+async function cleanupOrphanedJupyterProcesses() {
+  const entries = await readJupyterPidRegistry();
+  if (entries.length === 0) return;
+  for (const entry of entries) {
+    if (await isJupyterProcess(entry.pid)) {
+      try { process.kill(entry.pid, 'SIGTERM'); } catch { /* ignore */ }
+    }
+  }
+  await writeJupyterPidRegistry([]);
+}
+
+// Kill whatever process currently holds a given port (used to reclaim port 8000 for sidecar)
+async function killProcessOnPort(port) {
+  try {
+    if (process.platform === 'win32') {
+      const out = await runCommand('netstat', ['-ano']);
+      const pids = new Set();
+      for (const line of out.split('\n')) {
+        if (line.includes(`:${port} `) || line.includes(`:${port}\t`)) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(pid) && pid > 0) pids.add(pid);
+        }
+      }
+      for (const pid of pids) {
+        try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ }
+      }
+    } else {
+      const out = await runCommand('lsof', ['-ti', `:${port}`]);
+      for (const pidStr of out.split('\n').filter(Boolean)) {
+        const pid = parseInt(pidStr, 10);
+        if (!isNaN(pid) && pid > 0) {
+          try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ }
+        }
+      }
+    }
+  } catch { /* ignore */ }
+}
+
 const defaultSettings = () => ({
   storageRoot: app.getPath('userData'),
   rememberLogin: true,
@@ -676,6 +773,10 @@ const createWindow = async () => {
 };
 
 app.whenReady().then(async () => {
+  // Kill any orphaned sidecar (port 8000) and Jupyter processes from a previous crash
+  await killProcessOnPort(8000);
+  await cleanupOrphanedJupyterProcesses();
+
   await migrateLegacyTutorAppData();
   createWindow();
 
@@ -2434,7 +2535,13 @@ ipcMain.handle('jupyter:start', async (_event, payload) => {
   });
 
   jupyterServers.set(chapterSegment, { process: proc, port, token, url });
-  proc.on('exit', () => jupyterServers.delete(chapterSegment));
+  proc.on('exit', () => {
+    jupyterServers.delete(chapterSegment);
+    removeJupyterPidEntry(proc.pid).catch(() => {});
+  });
+
+  // Register PID so startup cleanup can kill it if app crashes before stopping it
+  await addJupyterPidEntry({ pid: proc.pid, port, chapterId: rawChapterId, startedAt: Date.now() });
 
   return { url, token, port };
 });
@@ -2445,8 +2552,10 @@ ipcMain.handle('jupyter:stop', async (_event, payload) => {
   const { chapterSegment } = await ensureChapterWorkspaceDir(rawChapterId);
   const server = jupyterServers.get(chapterSegment);
   if (server) {
+    const pid = server.process.pid;
     try { server.process.kill('SIGTERM'); } catch { /* ignore */ }
     jupyterServers.delete(chapterSegment);
+    await removeJupyterPidEntry(pid);
   }
   return { stopped: true };
 });
