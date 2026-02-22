@@ -218,6 +218,8 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       setLoadError('');
       setIsLoading(true);
       setIsRunning(false);
+      setActiveNotebook('');
+      setActiveFile('');
       loadTokenRef.current += 1;
 
       try {
