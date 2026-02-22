@@ -44,8 +44,8 @@ const mapCourseSummary = (course: BackendCourseSummary): CourseSummary => ({
   joinedAt: course.joined_at,
 });
 
-const mapChapter = (courseId: string, chapter: BackendChapter): Chapter => ({
-  id: `${courseId}/${chapter.chapter_code}`,
+const mapChapter = (courseCode: string, chapter: BackendChapter): Chapter => ({
+  id: `${courseCode}/${chapter.chapter_code}`,
   title: chapter.title,
   status: chapter.status,
   initialMessage: '欢迎来到本章。请先描述你当前的理解与进度。',
@@ -81,7 +81,7 @@ export const courseService = {
     return response.chapters;
   },
 
-  async getCoursePhases(courseId: string): Promise<Phase[]> {
+  async getCoursePhases(courseId: string, courseCode?: string): Promise<Phase[]> {
     const bundlePhases = await contentService.loadPhasesFromBundles();
     if (bundlePhases && bundlePhases.length > 0) {
       const exact = bundlePhases.filter((phase) => phase.id === courseId);
@@ -92,6 +92,7 @@ export const courseService = {
     }
 
     const [course, chapters] = await Promise.all([this.getCourse(courseId), this.listChapters(courseId)]);
+    const scopePrefix = courseCode || courseId;
 
     return [
       {
@@ -104,7 +105,7 @@ export const courseService = {
           necessity: course.description || '',
           journey: '',
         },
-        chapters: chapters.sort((a, b) => a.order - b.order).map((chapter) => mapChapter(courseId, chapter)),
+        chapters: chapters.sort((a, b) => a.order - b.order).map((chapter) => mapChapter(scopePrefix, chapter)),
       },
     ];
   },
