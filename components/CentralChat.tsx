@@ -190,6 +190,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
     <div className="flex flex-col h-full bg-white relative">
       <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
         {messages.map((msg, idx) => {
+          const hasCodeBlock = msg.role === 'model' && msg.text.includes('```');
+
           return (
             <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               <div
@@ -211,12 +213,14 @@ const CentralChat: React.FC<CentralChatProps> = ({
                       remarkPlugins={[remarkGfm]}
                       components={{
                         code(props: any) {
-                          const { inline, className, children, ...rest } = props;
+                          const { className, children, ...rest } = props;
                           const match = /language-(\w+)/.exec(className || '');
                           const rawCode = String(children).replace(/\n$/, '');
                           const language = match?.[1] || 'text';
+                          // Block code: has a language tag OR content spans multiple lines
+                          const isBlock = !!match || rawCode.includes('\n');
 
-                          if (!inline) {
+                          if (isBlock) {
                             return (
                               <div className="relative group/code">
                                 <SyntaxHighlighter
@@ -225,7 +229,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
                                   style={vs}
                                   language={language}
                                   PreTag="div"
-                                  customStyle={{ margin: '1em 0', borderRadius: '0.5rem', fontSize: '0.9em', paddingTop: '2.25rem' }}
+                                  customStyle={{ margin: '1em 0', borderRadius: '0.5rem', fontSize: '0.9em' }}
                                 />
                               </div>
                             );
@@ -234,7 +238,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
                           return (
                             <code
                               {...rest}
-                              className={`${className} bg-gray-100 px-1 py-0.5 rounded font-mono text-pink-600 before:content-[''] after:content-['']`}
+                              className="bg-gray-100 px-1 py-0.5 rounded font-mono text-pink-600 text-[0.85em]"
                             >
                               {children}
                             </code>
@@ -245,6 +249,18 @@ const CentralChat: React.FC<CentralChatProps> = ({
                       {msg.text}
                     </ReactMarkdown>
                   </div>
+
+                  {hasCodeBlock && onStartCoding && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <button
+                        onClick={onStartCoding}
+                        className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        <Terminal size={13} />
+                        打开代码编辑器
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
