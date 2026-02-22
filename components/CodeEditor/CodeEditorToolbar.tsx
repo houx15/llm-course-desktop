@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClipboardCopy, Loader2, Play, Send, Square, Trash2 } from 'lucide-react';
+import { ClipboardCopy, Folder, Loader2, Play, Send, Square, Trash2 } from 'lucide-react';
 import { CodeWorkspaceFile } from '../../types';
 
 interface CodeEditorToolbarProps {
@@ -7,12 +7,16 @@ interface CodeEditorToolbarProps {
   activeFile: string;
   isRunning: boolean;
   hasOutput: boolean;
+  chapterDir?: string;
+  hasIpynb?: boolean;
   onSelectFile: (filename: string) => void;
   onRun: () => void;
   onStop: () => void;
   onClearOutput: () => void;
   onCopyOutput: () => void;
   onSendToTutor: () => void;
+  onOpenFolder?: () => void;
+  onOpenJupyter?: () => void;
 }
 
 const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
@@ -20,13 +24,19 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
   activeFile,
   isRunning,
   hasOutput,
+  chapterDir,
+  hasIpynb,
   onSelectFile,
   onRun,
   onStop,
   onClearOutput,
   onCopyOutput,
   onSendToTutor,
+  onOpenFolder,
+  onOpenJupyter,
 }) => {
+  const shortDir = chapterDir ? chapterDir.split('/').slice(-2).join('/') : '';
+
   return (
     <div className="px-3 py-2 border-b border-gray-200 bg-white flex items-center justify-between gap-2">
       <div className="flex items-center gap-2 min-w-0">
@@ -66,9 +76,33 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
             Running
           </span>
         )}
+
+        {hasIpynb && onOpenJupyter && (
+          <button
+            onClick={onOpenJupyter}
+            className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+            title="Open workspace in Jupyter Notebook"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            Jupyter
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-1">
+        {chapterDir && onOpenFolder && (
+          <button
+            onClick={onOpenFolder}
+            className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-800"
+            title={chapterDir}
+          >
+            <Folder size={13} />
+            <span className="max-w-[120px] truncate hidden sm:inline">{shortDir}</span>
+          </button>
+        )}
         <button
           onClick={onClearOutput}
           disabled={!hasOutput}

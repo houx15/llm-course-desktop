@@ -276,6 +276,8 @@ declare global {
       reattachRuntimeSession: (payload: { sessionId: string; chapterId: string }) => Promise<{ status: string }>;
       createCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string }>;
       openCodePath: (filePath: string) => Promise<{ opened: boolean }>;
+      getCodeWorkspaceDir: (payload: { chapterId: string }) => Promise<{ chapterDir: string }>;
+      openJupyter: (payload: { chapterId: string }) => Promise<{ started: boolean; reason?: string }>;
       readCodeFile: (payload: { chapterId: string; filename: string }) => Promise<{ content: string; filePath: string }>;
       writeCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string; bytes: number }>;
       listCodeFiles: (payload: { chapterId: string }) => Promise<{ files: CodeWorkspaceFile[] }>;

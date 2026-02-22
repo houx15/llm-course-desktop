@@ -2281,6 +2281,39 @@ ipcMain.handle('code:openPath', async (_event, filePath) => {
   return { opened: result === '' };
 });
 
+ipcMain.handle('code:getWorkspaceDir', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  if (!rawChapterId) throw new Error('Missing chapterId');
+  const { chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  return { chapterDir };
+});
+
+ipcMain.handle('code:openJupyter', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  if (!rawChapterId) throw new Error('Missing chapterId');
+
+  const { chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
+
+  const pythonPath = await resolvePythonForCodeExecution();
+  const pythonDir = path.dirname(pythonPath);
+  const jupyterBin = process.platform === 'win32'
+    ? path.join(pythonDir, 'Scripts', 'jupyter.exe')
+    : path.join(pythonDir, 'jupyter');
+
+  if (!(await pathExists(jupyterBin))) {
+    return { started: false, reason: 'jupyter not found in Python environment' };
+  }
+
+  const child = spawn(jupyterBin, ['notebook', '--notebook-dir', chapterDir], {
+    detached: true,
+    stdio: 'ignore',
+    cwd: chapterDir,
+  });
+  child.unref();
+  return { started: true };
+});
+
 const loadIndex = async () => {
   const settings = await loadSettings();
   const indexPath = getIndexPath(settings);

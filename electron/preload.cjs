@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('tutorApp', {
 
   createCodeFile: (payload) => ipcRenderer.invoke('code:createFile', payload),
   openCodePath: (filePath) => ipcRenderer.invoke('code:openPath', filePath),
+  getCodeWorkspaceDir: (payload) => ipcRenderer.invoke('code:getWorkspaceDir', payload),
+  openJupyter: (payload) => ipcRenderer.invoke('code:openJupyter', payload),
   readCodeFile: (payload) => ipcRenderer.invoke('code:readFile', payload),
   writeCodeFile: (payload) => ipcRenderer.invoke('code:writeFile', payload),
   listCodeFiles: (payload) => ipcRenderer.invoke('code:listFiles', payload),

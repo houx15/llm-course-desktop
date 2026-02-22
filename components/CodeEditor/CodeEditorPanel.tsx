@@ -69,6 +69,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
 }) => {
   const [files, setFiles] = useState<CodeWorkspaceFile[]>([]);
   const [activeFile, setActiveFile] = useState('');
+  const [chapterDir, setChapterDir] = useState('');
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
@@ -227,6 +228,9 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         if (cancelled) return;
 
         setFiles(listed);
+        codeWorkspace.getWorkspaceDir(chapterId).then((dir) => {
+          if (!cancelled) setChapterDir(dir);
+        }).catch(() => {});
         const preferred =
           (initialActiveFile && listed.find((file) => file.name === initialActiveFile)?.name) ||
           listed.find((file) => file.name.toLowerCase().endsWith('.py'))?.name ||
@@ -378,6 +382,21 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     onSendOutputToChatInput?.(`\`\`\`\n${outputText}\n\`\`\``);
   };
 
+  const hasIpynb = files.some((f) => f.name.toLowerCase().endsWith('.ipynb'));
+
+  const handleOpenFolder = () => {
+    if (chapterDir) {
+      codeWorkspace.openPath(chapterDir).catch(() => {});
+    }
+  };
+
+  const handleOpenJupyter = async () => {
+    const result = await codeWorkspace.openJupyter(chapterId);
+    if (!result.started) {
+      appendOutput('stderr', `[Jupyter] ${result.reason || 'Failed to start'}\n`);
+    }
+  };
+
   const editorLanguage = getLanguageFromFilename(activeFile);
   const highlightedLanguage = editorLanguage === 'plaintext' ? 'text' : editorLanguage;
 
@@ -388,12 +407,16 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         activeFile={activeFile}
         isRunning={isRunning}
         hasOutput={outputChunks.length > 0}
+        chapterDir={chapterDir}
+        hasIpynb={hasIpynb}
         onSelectFile={handleSelectFile}
         onRun={handleRun}
         onStop={handleStop}
         onClearOutput={handleClearOutput}
         onCopyOutput={handleCopyOutput}
         onSendToTutor={handleSendToTutor}
+        onOpenFolder={handleOpenFolder}
+        onOpenJupyter={handleOpenJupyter}
       />
 
       <div className="px-2 py-1.5 border-b border-gray-100 bg-gray-50 flex items-center gap-1 overflow-x-auto">

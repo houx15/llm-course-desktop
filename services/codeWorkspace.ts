@@ -30,6 +30,21 @@ export const codeWorkspace = {
     return window.tutorApp.openCodePath(filePath);
   },
 
+  async getWorkspaceDir(chapterId: string): Promise<string> {
+    if (!window.tutorApp) {
+      throw new Error('tutorApp API unavailable');
+    }
+    const result = await window.tutorApp.getCodeWorkspaceDir({ chapterId });
+    return result.chapterDir;
+  },
+
+  async openJupyter(chapterId: string): Promise<{ started: boolean; reason?: string }> {
+    if (!window.tutorApp) {
+      throw new Error('tutorApp API unavailable');
+    }
+    return window.tutorApp.openJupyter({ chapterId });
+  },
+
   async listFiles(chapterId: string): Promise<CodeWorkspaceFile[]> {
     if (!window.tutorApp) {
       throw new Error('tutorApp API unavailable');
