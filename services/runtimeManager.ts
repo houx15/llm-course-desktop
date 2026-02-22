@@ -286,6 +286,11 @@ export const runtimeManager = {
     return { started: true };
   },
 
+  async reattachSession(sessionId: string, chapterId: string) {
+    if (!window.tutorApp) return;
+    await window.tutorApp.reattachRuntimeSession({ sessionId, chapterId });
+  },
+
   async createSession(chapterId: string) {
     const started = await this.ensureStarted();
     if (!started.started) {

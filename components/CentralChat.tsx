@@ -48,6 +48,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
         const existing = sessions.find((s) => s.chapter_id === chapter.id);
 
         if (existing) {
+          await runtimeManager.reattachSession(existing.session_id, chapter.id);
           const turns = await runtimeManager.getSessionHistory(existing.session_id);
           if (cancelled) return;
           setSessionId(existing.session_id);

@@ -2033,6 +2033,31 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
   return parsed;
 });
 
+ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
+  const sessionId = String(payload?.sessionId || '').trim();
+  const chapterId = String(payload?.chapterId || '').trim();
+  if (!sessionId || !chapterId) {
+    throw new Error('Missing sessionId or chapterId');
+  }
+
+  const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
+  const desktopContext = await buildSidecarSessionContext(chapterId);
+
+  const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/reattach`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ desktop_context: desktopContext }),
+  });
+
+  if (!response.ok) {
+    const parsed = await parseBackendResponse(response).catch(() => ({}));
+    const detail = parsed?.detail || `Reattach session failed (${response.status})`;
+    throw new Error(String(detail));
+  }
+
+  return response.json();
+});
+
 ipcMain.handle('code:createFile', async (_event, payload) => {
   const rawChapterId = String(payload?.chapterId || '').trim();
   const rawFilename = String(payload?.filename || '');

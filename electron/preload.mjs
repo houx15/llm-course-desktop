@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('tutorApp', {
   runtimeHealth: () => ipcRenderer.invoke('runtime:health'),
   runtimePreflight: () => ipcRenderer.invoke('runtime:preflight'),
   createRuntimeSession: (payload) => ipcRenderer.invoke('runtime:createSession', payload),
+  reattachRuntimeSession: (payload) => ipcRenderer.invoke('runtime:reattachSession', payload),
 
   createCodeFile: (payload) => ipcRenderer.invoke('code:createFile', payload),
   openCodePath: (filePath) => ipcRenderer.invoke('code:openPath', filePath),

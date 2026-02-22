@@ -273,6 +273,7 @@ declare global {
         runtime?: any;
       }>;
       createRuntimeSession: (payload: { chapterId: string }) => Promise<{ session_id: string; initial_message?: string }>;
+      reattachRuntimeSession: (payload: { sessionId: string; chapterId: string }) => Promise<{ status: string }>;
       createCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string }>;
       openCodePath: (filePath: string) => Promise<{ opened: boolean }>;
       readCodeFile: (payload: { chapterId: string; filename: string }) => Promise<{ content: string; filePath: string }>;
