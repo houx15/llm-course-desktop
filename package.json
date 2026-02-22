@@ -15,8 +15,8 @@
     "dev:renderer": "vite",
     "dev:electron": "VITE_DEV_SERVER_URL=http://localhost:3000 electron ./electron/main.mjs",
     "dev:desktop": "concurrently -k \"npm run dev:renderer\" \"npm run dev:electron\"",
-    "pack:desktop": "npm run build:renderer && electron-builder --dir",
-    "build:desktop": "npm run build:renderer && electron-builder"
+    "pack:desktop": "npm run build:renderer && npm_config_electron_mirror= electron-builder --dir",
+    "build:desktop": "npm run build:renderer && npm_config_electron_mirror= electron-builder"
   },
   "build": {
     "appId": "com.knoweia.desktop",

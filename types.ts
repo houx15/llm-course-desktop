@@ -115,6 +115,7 @@ declare global {
     tutorApp?: {
       getVersion: () => Promise<string>;
       openExternal: (url: string) => Promise<boolean>;
+      relaunchApp: () => Promise<void>;
       getSettings: () => Promise<{
         storageRoot: string;
         rememberLogin: boolean;

@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('tutorApp', {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),

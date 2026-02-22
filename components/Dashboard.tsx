@@ -85,7 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onAddCourse, onSel
 
                     <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
                          <span className="text-xs font-medium text-gray-400">Joined {course.joinedAt}</span>
-                         <span className="text-sm font-bold text-blue-600 group-hover:translate-x-1 transition-transform flex items-center gap-1">
+                         <span className="text-sm font-bold text-blue-600 group-hover:translate-x-1 transition-transform flex items-center gap-1 whitespace-nowrap">
                             进入课程 <BookOpen size={14} />
                          </span>
                     </div>

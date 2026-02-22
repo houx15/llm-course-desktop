@@ -83,7 +83,7 @@ const SidecarDownloadProgress: React.FC<SidecarDownloadProgressProps> = ({ onRet
 
         <div className="text-center">
           <h2 className="text-lg font-semibold text-gray-900 mb-1">
-            {isError ? '下载失败' : isDone ? '准备就绪' : '正在设置 Knoweia...'}
+            {isError ? '下载失败' : isDone ? '准备就绪' : '正在设置 Knoweia (首次约需15分钟)...'}
           </h2>
           <p className="text-sm text-gray-500">
             {phaseLabel[state.phase] || state.status}

@@ -813,6 +813,7 @@ app.on('before-quit', () => {
 });
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
+ipcMain.handle('app:relaunch', () => { app.relaunch(); app.quit(); });
 ipcMain.handle('app:openExternal', async (_event, url) => {
   if (typeof url === 'string' && url.length > 0) {
     await shell.openExternal(url);

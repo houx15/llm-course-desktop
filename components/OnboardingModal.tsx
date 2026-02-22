@@ -32,6 +32,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
   const [showKey, setShowKey] = useState(false);
   const [storageRoot, setStorageRoot] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Load current storageRoot default on mount
@@ -76,7 +77,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
         rememberKeys: { ...currentSettings.rememberKeys, [providerId]: true },
         modelConfigs: { ...currentSettings.modelConfigs, [providerId]: { model: llmModel || provider.defaultModel } },
       });
-      onComplete();
+      setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
@@ -210,14 +211,27 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
           <p className="mb-4 text-sm text-red-600">{error}</p>
         )}
 
-        <button
-          type="button"
-          disabled={!apiKey.trim() || saving}
-          onClick={handleSubmit}
-          className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-40 hover:bg-blue-700 transition-colors"
-        >
-          {saving ? 'Saving…' : 'Get Started'}
-        </button>
+        {saved ? (
+          <div className="text-center">
+            <p className="text-sm text-green-600 mb-3">Settings saved! Restart the app to connect.</p>
+            <button
+              type="button"
+              onClick={() => window.tutorApp?.relaunchApp()}
+              className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors"
+            >
+              Restart App
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={!apiKey.trim() || saving}
+            onClick={handleSubmit}
+            className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-40 hover:bg-blue-700 transition-colors"
+          >
+            {saving ? 'Saving…' : 'Get Started'}
+          </button>
+        )}
       </div>
     </div>
   );
