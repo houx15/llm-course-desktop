@@ -30,6 +30,7 @@ export type NormalizedStreamEvent =
   | { type: 'memo_update'; phase: 'start' | 'complete'; turnIndex?: number; report?: string }
   | { type: 'done'; turnIndex?: number }
   | { type: 'expert_consultation'; phase: 'start' | 'complete' | 'error'; payload: any }
+  | { type: 'token_usage'; agent: string; turnIndex: number; inputTokens: number; outputTokens: number }
   | { type: 'error'; message: string }
   | { type: string; [key: string]: any };
 
@@ -101,6 +102,16 @@ const normalizeEvent = (raw: RawStreamEvent): NormalizedStreamEvent => {
 
   if (type === 'error') {
     return { type: 'error', message: String(raw.message || 'Unknown sidecar error') };
+  }
+
+  if (type === 'token_usage') {
+    return {
+      type: 'token_usage',
+      agent: String(raw.agent || ''),
+      turnIndex: Number(raw.turn_index ?? 0),
+      inputTokens: Number(raw.input_tokens ?? 0),
+      outputTokens: Number(raw.output_tokens ?? 0),
+    };
   }
 
   return raw as NormalizedStreamEvent;

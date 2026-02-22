@@ -7,6 +7,7 @@ import { NormalizedStreamEvent } from '../services/runtimeManager';
 
 interface CodingSidebarProps {
   chapter: Chapter;
+  courseId: string;
   onExit: () => void;
   onRuntimeEvent?: (event: NormalizedStreamEvent) => void;
   dynamicReport?: string;
@@ -16,6 +17,7 @@ interface CodingSidebarProps {
 
 const CodingSidebar: React.FC<CodingSidebarProps> = ({
   chapter,
+  courseId,
   onExit,
   onRuntimeEvent,
   dynamicReport,
@@ -56,7 +58,7 @@ const CodingSidebar: React.FC<CodingSidebarProps> = ({
       <div className="flex-1 overflow-hidden relative">
         <div className={`absolute inset-0 transition-opacity duration-200 ${activeTab === 'chat' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
              {/* Pass undefined to onStartCoding to avoid showing the button inside the sidebar */}
-            <CentralChat chapter={chapter} onStartCoding={undefined} onRuntimeEvent={onRuntimeEvent} />
+            <CentralChat chapter={chapter} courseId={courseId} onStartCoding={undefined} onRuntimeEvent={onRuntimeEvent} />
         </div>
         <div className={`absolute inset-0 transition-opacity duration-200 ${activeTab === 'roadmap' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
             <RoadmapPanel

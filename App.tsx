@@ -617,6 +617,7 @@ const App: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <CentralChat
                     chapter={currentChapter}
+                    courseId={activeCourseId || currentPhase?.id || ''}
                     onStartCoding={openCodeEditor}
                     onRuntimeEvent={(event) => handleChapterRuntimeEvent(currentChapter.id, event)}
                     onOpenInEditor={(payload) => handleOpenCodeFromChat(currentChapter.id, payload)}

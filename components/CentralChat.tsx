@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Message, Chapter } from '../types';
 import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManager';
+import { syncQueue } from '../services/syncQueue';
 import { Bot, User, SendHorizontal, Loader2, Paperclip, Terminal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -16,6 +17,7 @@ interface ChatInputInjection {
 
 interface CentralChatProps {
   chapter: Chapter;
+  courseId: string;
   onStartCoding?: () => void;
   onRuntimeEvent?: (event: NormalizedStreamEvent) => void;
   onOpenInEditor?: (payload: { code: string; language?: string }) => void;
@@ -25,12 +27,14 @@ interface CentralChatProps {
 
 const CentralChat: React.FC<CentralChatProps> = ({
   chapter,
+  courseId,
   onStartCoding,
   onRuntimeEvent,
   onOpenInEditor,
   injectedInput,
   onInjectedHandled,
 }) => {
+  const chapterId = chapter.id.includes('/') ? chapter.id.split('/').pop()! : chapter.id;
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -135,16 +139,62 @@ const CentralChat: React.FC<CentralChatProps> = ({
     setMessages((prev) => [...prev, userMsg, { role: 'model', text: '' }]);
     setIsLoading(true);
 
+    const startTime = Date.now();
+    let modelResponseText = '';
+    let capturedTurnIndex: number | undefined;
+    const tokenUsage: Record<string, { input: number; output: number }> = {};
+
     try {
       await runtimeManager.streamMessage(sessionId, userMsg.text, (event) => {
         onRuntimeEvent?.(event);
         if (event.type === 'companion_chunk') {
+          modelResponseText += event.content || '';
           appendToLatestModelMessage(event.content || '');
         }
         if (event.type === 'error') {
           appendToLatestModelMessage(`\n\n[错误] ${event.message}`);
         }
+        if (event.type === 'token_usage') {
+          if (capturedTurnIndex === undefined) {
+            capturedTurnIndex = event.turnIndex;
+          }
+          const agent = event.agent as string;
+          if (!tokenUsage[agent]) {
+            tokenUsage[agent] = { input: 0, output: 0 };
+          }
+          tokenUsage[agent].input += event.inputTokens;
+          tokenUsage[agent].output += event.outputTokens;
+        }
+        if (event.type === 'memo_update' && event.phase === 'complete' && event.report) {
+          syncQueue.enqueueAnalytics({
+            event_type: 'dynamic_report',
+            event_time: new Date().toISOString(),
+            course_id: courseId,
+            chapter_id: chapterId,
+            session_id: sessionId!,
+            payload: {
+              turn_index: capturedTurnIndex,
+              report: event.report,
+            },
+          }).catch(() => {});
+        }
       });
+
+      syncQueue.enqueueAnalytics({
+        event_type: 'turn_complete',
+        event_time: new Date().toISOString(),
+        course_id: courseId,
+        chapter_id: chapterId,
+        session_id: sessionId!,
+        payload: {
+          turn_index: capturedTurnIndex,
+          user_message: text,
+          model_response: modelResponseText,
+          response_time_ms: Date.now() - startTime,
+          token_usage: tokenUsage,
+        },
+      }).catch(() => {});
+
       return true;
     } catch (error) {
       appendToLatestModelMessage(`抱歉，遇到了一些错误，请重试。\n\n${error instanceof Error ? error.message : ''}`);
