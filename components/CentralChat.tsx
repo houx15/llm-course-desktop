@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Message, Chapter } from '../types';
 import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManager';
-import { Bot, User, SendHorizontal, Loader2, Paperclip, Terminal, Code2 } from 'lucide-react';
+import { Bot, User, SendHorizontal, Loader2, Paperclip, Terminal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -190,9 +190,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
     <div className="flex flex-col h-full bg-white relative">
       <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
         {messages.map((msg, idx) => {
-          const hasCodeBlock = msg.text.includes('```');
-          const showCodingButton = msg.role === 'model' && hasCodeBlock && onStartCoding;
-
           return (
             <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               <div
@@ -222,15 +219,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
                           if (!inline) {
                             return (
                               <div className="relative group/code">
-                                {msg.role === 'model' && onOpenInEditor && (
-                                  <button
-                                    onClick={() => onOpenInEditor({ code: rawCode, language })}
-                                    className="absolute top-2 right-2 z-10 opacity-0 group-hover/code:opacity-100 transition-opacity inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-black/80 text-white hover:bg-black"
-                                  >
-                                    <Code2 size={12} />
-                                    Open in Editor
-                                  </button>
-                                )}
                                 <SyntaxHighlighter
                                   {...rest}
                                   children={rawCode}
@@ -257,18 +245,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
                       {msg.text}
                     </ReactMarkdown>
                   </div>
-
-                  {showCodingButton && (
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                      <button
-                        onClick={onStartCoding}
-                        className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-all text-sm font-medium w-full sm:w-auto justify-center"
-                      >
-                        <Terminal size={16} />
-                        打开 Code Editor
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -292,6 +268,16 @@ const CentralChat: React.FC<CentralChatProps> = ({
           <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors" title="添加附件">
             <Paperclip size={20} />
           </button>
+
+          {onStartCoding && (
+            <button
+              onClick={onStartCoding}
+              className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors shrink-0"
+              title="打开代码编辑器"
+            >
+              <Terminal size={20} />
+            </button>
+          )}
 
           <div className="flex-1 relative shadow-sm rounded-2xl border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
             <textarea
