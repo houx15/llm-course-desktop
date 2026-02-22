@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Message, Chapter } from '../types';
 import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManager';
 import { syncQueue } from '../services/syncQueue';
+import { fetchSessionState } from '../services/backendClient';
 import { Bot, User, SendHorizontal, Loader2, Paperclip, Terminal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -44,6 +45,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [recovering, setRecovering] = useState(false);
   const handledInjectionIdRef = useRef<number | null>(null);
 
   const autoResizeTextarea = () => {
@@ -92,7 +94,52 @@ const CentralChat: React.FC<CentralChatProps> = ({
           }
           setSessionStarted(true);
         }
-        // No existing session → show landing screen, wait for user to click "开启本章学习"
+        // No existing local session — check backend for cross-device recovery
+      try {
+        const state = await fetchSessionState(chapter.id);
+        if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
+          if (cancelled) return;
+          setRecovering(true);
+          // Write recovered data to sidecar sessions directory
+          await window.tutorApp!.restoreSessionState({
+            sessionId: state.session_id,
+            turns: state.turns,
+            memoryJson: state.memory ?? {},
+            reportMd: state.report_md ?? '',
+          });
+          // Reattach the restored session in sidecar
+          await runtimeManager.reattachSession(state.session_id, chapter.id);
+          const [sidecarTurns, report] = await Promise.all([
+            runtimeManager.getSessionHistory(state.session_id),
+            runtimeManager.getDynamicReport(state.session_id).catch(() => ''),
+          ]);
+          if (cancelled) return;
+          setRecovering(false);
+          setSessionId(state.session_id);
+          // Build messages: prefer sidecar turns, fall back to backend turns
+          const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : state.turns.map((t) => ({
+            user_message: t.user_message,
+            companion_response: t.companion_response,
+          }));
+          const msgs: Message[] = sourceTurns.flatMap((t) => {
+            const result: Message[] = [];
+            if (t.user_message) result.push({ role: 'user', text: t.user_message });
+            if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
+            return result;
+          });
+          setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+          if (report) {
+            onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
+          }
+          setSessionStarted(true);
+        }
+        // has_data: false → fall through to landing screen
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('[CentralChat] Recovery check failed, starting fresh:', err);
+        setRecovering(false);
+      }
+      // No session found anywhere → show landing screen, wait for user to click "开启本章学习"
       } catch (error) {
         if (cancelled) return;
         // On error checking sessions, also show landing screen
@@ -299,7 +346,10 @@ const CentralChat: React.FC<CentralChatProps> = ({
   if (isInitializing) {
     return (
       <div className="flex flex-col h-full bg-white items-center justify-center">
-        <Loader2 size={28} className="animate-spin text-gray-300" />
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-500">{recovering ? '正在恢复学习记录...' : '正在检查学习环境...'}</p>
+        </div>
       </div>
     );
   }

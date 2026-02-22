@@ -2225,6 +2225,33 @@ ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
   return response.json();
 });
 
+ipcMain.handle('session:restore', async (_event, { sessionId, turns, memoryJson, reportMd }) => {
+  const settings = await loadSettings();
+  const sessionsDir = path.join(getSessionsRoot(settings), sessionId);
+
+  await fs.mkdir(sessionsDir, { recursive: true });
+
+  const turnsDir = path.join(sessionsDir, 'turns');
+  await fs.mkdir(turnsDir, { recursive: true });
+
+  for (const turn of turns) {
+    const idx = String(turn.turn_index).padStart(3, '0');
+    await fs.writeFile(path.join(turnsDir, `${idx}_user.txt`), turn.user_message, 'utf8');
+    await fs.writeFile(path.join(turnsDir, `${idx}_companion.txt`), turn.companion_response, 'utf8');
+    await fs.writeFile(path.join(turnsDir, `${idx}_turn_outcome.json`), JSON.stringify(turn.turn_outcome ?? {}), 'utf8');
+  }
+
+  if (memoryJson && Object.keys(memoryJson).length > 0) {
+    await fs.writeFile(path.join(sessionsDir, 'memo_digest.json'), JSON.stringify(memoryJson), 'utf8');
+  }
+
+  if (reportMd) {
+    await fs.writeFile(path.join(sessionsDir, 'dynamic_report.md'), reportMd, 'utf8');
+  }
+
+  return { ok: true };
+});
+
 ipcMain.handle('code:createFile', async (_event, payload) => {
   const rawChapterId = String(payload?.chapterId || '').trim();
   const rawFilename = String(payload?.filename || '');

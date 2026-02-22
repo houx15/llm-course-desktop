@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('tutorApp', {
   runtimePreflight: () => ipcRenderer.invoke('runtime:preflight'),
   createRuntimeSession: (payload) => ipcRenderer.invoke('runtime:createSession', payload),
   reattachRuntimeSession: (payload) => ipcRenderer.invoke('runtime:reattachSession', payload),
+  restoreSessionState: (payload) => ipcRenderer.invoke('session:restore', payload),
 
   startJupyterServer: (payload) => ipcRenderer.invoke('jupyter:start', payload),
   stopJupyterServer: (payload) => ipcRenderer.invoke('jupyter:stop', payload),

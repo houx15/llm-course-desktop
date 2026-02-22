@@ -275,6 +275,17 @@ declare global {
       }>;
       createRuntimeSession: (payload: { chapterId: string }) => Promise<{ session_id: string; initial_message?: string }>;
       reattachRuntimeSession: (payload: { sessionId: string; chapterId: string }) => Promise<{ status: string }>;
+      restoreSessionState: (payload: {
+        sessionId: string;
+        turns: Array<{
+          turn_index: number;
+          user_message: string;
+          companion_response: string;
+          turn_outcome: Record<string, unknown>;
+        }>;
+        memoryJson: Record<string, unknown>;
+        reportMd: string;
+      }) => Promise<{ ok: boolean }>;
       startJupyterServer: (payload: { chapterId: string }) => Promise<{ url: string; token: string; port: number }>;
       stopJupyterServer: (payload: { chapterId: string }) => Promise<{ stopped: boolean }>;
       getJupyterStatus: (payload: { chapterId: string }) => Promise<{ running: boolean; url?: string; token?: string; port?: number }>;
