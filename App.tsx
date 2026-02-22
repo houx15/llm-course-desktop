@@ -17,7 +17,7 @@ import { syncQueue } from './services/syncQueue';
 import { codeWorkspace } from './services/codeWorkspace';
 import { Phase, Chapter, CourseSummary, User } from './types';
 import SidecarDownloadProgress from './components/SidecarDownloadProgress';
-import { Download, Terminal, ChevronUp } from 'lucide-react';
+import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const App: React.FC = () => {
   // Auth State
@@ -45,6 +45,11 @@ const App: React.FC = () => {
   const [showSidecarDownload, setShowSidecarDownload] = useState(false);
   const [editorWidths, setEditorWidths] = useState<Record<string, number>>({});
   const [isResizingEditor, setIsResizingEditor] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(260);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [rightPanelWidth, setRightPanelWidth] = useState(280);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [chatInjections, setChatInjections] = useState<
     Record<string, { id: number; text: string; send?: boolean; replace?: boolean } | null>
   >({});
@@ -196,6 +201,34 @@ const App: React.FC = () => {
       window.removeEventListener('mouseup', onMouseUp);
     };
   }, [isResizingEditor, currentChapter?.id]);
+
+  useEffect(() => {
+    if (!isResizingLeft) return;
+    const onMouseMove = (e: MouseEvent) => {
+      setLeftPanelWidth(Math.max(180, Math.min(420, e.clientX)));
+    };
+    const onMouseUp = () => setIsResizingLeft(false);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isResizingLeft]);
+
+  useEffect(() => {
+    if (!isResizingRight) return;
+    const onMouseMove = (e: MouseEvent) => {
+      setRightPanelWidth(Math.max(200, Math.min(520, window.innerWidth - e.clientX)));
+    };
+    const onMouseUp = () => setIsResizingRight(false);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isResizingRight]);
 
   // Forward sidecar stderr to browser DevTools console (dev visibility).
   useEffect(() => {
@@ -531,9 +564,16 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-1 overflow-hidden relative">
-        {isSidebarOpen && (
-          <div className="w-[260px] shrink-0 h-full border-r border-gray-200 z-20 bg-gray-50">
+      <div
+        className="flex flex-1 overflow-hidden relative"
+        style={{
+          cursor: isResizingLeft || isResizingRight ? 'col-resize' : undefined,
+          userSelect: isResizingLeft || isResizingRight || isResizingEditor ? 'none' : undefined,
+        }}
+      >
+        {/* LEFT PANEL */}
+        {isSidebarOpen ? (
+          <div style={{ width: leftPanelWidth }} className="shrink-0 h-full bg-gray-50 z-20 overflow-hidden">
             <Sidebar
               phases={phases}
               currentPhaseId={currentPhase?.id || null}
@@ -541,6 +581,32 @@ const App: React.FC = () => {
               onSelectPhase={handleSelectPhase}
               onSelectChapter={handleSelectChapter}
             />
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="w-5 shrink-0 h-full border-r border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center z-20"
+            title="展开侧边栏"
+          >
+            <ChevronRight size={12} className="text-gray-400" />
+          </button>
+        )}
+
+        {/* LEFT RESIZE DIVIDER */}
+        {isSidebarOpen && (
+          <div
+            className="relative shrink-0 w-1 cursor-col-resize group z-20"
+            onMouseDown={() => setIsResizingLeft(true)}
+          >
+            <div className="h-full w-full bg-gray-200 group-hover:bg-blue-400 transition-colors" />
+            <button
+              className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-6 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-gray-50"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => setIsSidebarOpen(false)}
+              title="收起侧边栏"
+            >
+              <ChevronLeft size={9} />
+            </button>
           </div>
         )}
 
@@ -666,20 +732,41 @@ const App: React.FC = () => {
           )}
         </div>
 
-        <div
-          className={`w-[280px] shrink-0 border-l border-gray-200 bg-gray-50 transition-transform duration-300 ${
-            currentChapter ? 'translate-x-0' : 'translate-x-full absolute right-0 h-full'
-          }`}
-        >
-          {currentChapter && (
-            <RoadmapPanel
-              chapter={currentChapter}
-              dynamicReport={chapterRuntimeState[currentChapter.id]?.dynamicReport || ''}
-              isRoadmapUpdating={chapterRuntimeState[currentChapter.id]?.roadmapUpdating || false}
-              isMemoUpdating={chapterRuntimeState[currentChapter.id]?.memoUpdating || false}
-            />
-          )}
-        </div>
+        {/* RIGHT RESIZE DIVIDER + PANEL */}
+        {currentChapter && (isRightPanelOpen ? (
+          <>
+            <div
+              className="relative shrink-0 w-1 cursor-col-resize group z-20"
+              onMouseDown={() => setIsResizingRight(true)}
+            >
+              <div className="h-full w-full bg-gray-200 group-hover:bg-blue-400 transition-colors" />
+              <button
+                className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-6 bg-white border border-gray-300 rounded shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-gray-50"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => setIsRightPanelOpen(false)}
+                title="收起报告栏"
+              >
+                <ChevronRight size={9} />
+              </button>
+            </div>
+            <div style={{ width: rightPanelWidth }} className="shrink-0 h-full bg-gray-50 overflow-hidden">
+              <RoadmapPanel
+                chapter={currentChapter}
+                dynamicReport={chapterRuntimeState[currentChapter.id]?.dynamicReport || ''}
+                isRoadmapUpdating={chapterRuntimeState[currentChapter.id]?.roadmapUpdating || false}
+                isMemoUpdating={chapterRuntimeState[currentChapter.id]?.memoUpdating || false}
+              />
+            </div>
+          </>
+        ) : (
+          <button
+            onClick={() => setIsRightPanelOpen(true)}
+            className="w-5 shrink-0 h-full border-l border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center"
+            title="展开报告栏"
+          >
+            <ChevronLeft size={12} className="text-gray-400" />
+          </button>
+        ))}
       </div>
     </div>
       )}
