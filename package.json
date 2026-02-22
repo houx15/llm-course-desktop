@@ -22,7 +22,8 @@
     "appId": "com.knoweia.desktop",
     "productName": "Knoweia",
     "directories": {
-      "buildResources": "assets"
+      "buildResources": "assets",
+      "output": "release"
     },
     "files": [
       "dist/**/*",
@@ -33,10 +34,16 @@
       "package.json"
     ],
     "mac": {
-      "icon": "assets/icon.icns"
+      "icon": "assets/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["universal"] }
+      ]
     },
     "win": {
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
     },
     "linux": {
       "icon": "assets/icon.png"
