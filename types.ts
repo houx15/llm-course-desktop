@@ -274,6 +274,9 @@ declare global {
       }>;
       createRuntimeSession: (payload: { chapterId: string }) => Promise<{ session_id: string; initial_message?: string }>;
       reattachRuntimeSession: (payload: { sessionId: string; chapterId: string }) => Promise<{ status: string }>;
+      startJupyterServer: (payload: { chapterId: string }) => Promise<{ url: string; token: string; port: number }>;
+      stopJupyterServer: (payload: { chapterId: string }) => Promise<{ stopped: boolean }>;
+      getJupyterStatus: (payload: { chapterId: string }) => Promise<{ running: boolean; url?: string; token?: string; port?: number }>;
       createCodeFile: (payload: { chapterId: string; filename: string; content: string }) => Promise<{ filePath: string }>;
       openCodePath: (filePath: string) => Promise<{ opened: boolean }>;
       getCodeWorkspaceDir: (payload: { chapterId: string }) => Promise<{ chapterDir: string }>;

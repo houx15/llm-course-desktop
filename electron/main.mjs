@@ -6,6 +6,7 @@ import tar from 'tar';
 import { spawn } from 'child_process';
 import os from 'os';
 import { createHash, randomUUID } from 'crypto';
+import net from 'net';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +36,18 @@ let runtimeAutoRestartAttempts = 0;
 const MAX_RUNTIME_AUTO_RESTART = 2;
 let runtimeLaunchInfo = null;
 const codeExecutionByChapter = new Map();
+const jupyterServers = new Map(); // chapterSegment → { process, port, token, url }
 const DEFAULT_CODE_TIMEOUT_MS = 60_000;
+
+const findFreePort = () =>
+  new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+    srv.on('error', reject);
+  });
 
 const defaultSettings = () => ({
   storageRoot: app.getPath('userData'),
@@ -693,6 +705,10 @@ app.on('before-quit', () => {
   for (const chapterSegment of codeExecutionByChapter.keys()) {
     killCodeExecution(chapterSegment, true);
   }
+  for (const { process: proc } of jupyterServers.values()) {
+    try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+  }
+  jupyterServers.clear();
 });
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
@@ -2338,6 +2354,108 @@ ipcMain.handle('code:openJupyter', async (_event, payload) => {
   });
   child.unref();
   return { started: true };
+});
+
+// Jupyter in-app kernel server (for NotebookEditor with persistent kernel / cross-cell vars)
+ipcMain.handle('jupyter:start', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  if (!rawChapterId) throw new Error('Missing chapterId');
+
+  const { chapterSegment, chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
+
+  // Return existing server if already running for this chapter
+  const existing = jupyterServers.get(chapterSegment);
+  if (existing) {
+    return { url: existing.url, token: existing.token, port: existing.port };
+  }
+
+  const pythonPath = await resolvePythonForCodeExecution();
+  const pythonDir = path.dirname(pythonPath);
+  const jupyterBin = process.platform === 'win32'
+    ? path.join(pythonDir, 'Scripts', 'jupyter.exe')
+    : path.join(pythonDir, 'jupyter');
+
+  if (!(await pathExists(jupyterBin))) {
+    throw new Error('jupyter binary not found — run sidecar setup first');
+  }
+
+  const port = await findFreePort();
+  const token = randomUUID().replace(/-/g, '');
+  const url = `http://127.0.0.1:${port}`;
+
+  const proc = spawn(jupyterBin, [
+    'notebook',
+    '--no-browser',
+    `--port=${port}`,
+    `--ServerApp.token=${token}`,
+    `--NotebookApp.token=${token}`,
+    `--ServerApp.allow_origin=*`,
+    `--NotebookApp.allow_origin=*`,
+    `--ServerApp.disable_check_xsrf=True`,
+    `--NotebookApp.disable_check_xsrf=True`,
+    `--notebook-dir=${chapterDir}`,
+    `--ServerApp.allow_remote_access=True`,
+  ], {
+    cwd: chapterDir,
+    env: { ...process.env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  // Wait until the server responds on /api
+  await new Promise((resolve, reject) => {
+    const startTimeout = setTimeout(() => {
+      proc.kill();
+      reject(new Error('Jupyter server did not start in 30s'));
+    }, 30_000);
+
+    let exited = false;
+    proc.on('exit', (code) => {
+      exited = true;
+      clearTimeout(startTimeout);
+      reject(new Error(`Jupyter server exited (code ${code}) before becoming ready`));
+    });
+
+    const poll = async () => {
+      if (exited) return;
+      try {
+        const res = await fetch(`${url}/api?token=${token}`, { signal: AbortSignal.timeout(2000) });
+        if (res.ok) {
+          clearTimeout(startTimeout);
+          resolve();
+          return;
+        }
+      } catch { /* not ready yet */ }
+      setTimeout(poll, 800);
+    };
+    setTimeout(poll, 1500);
+  });
+
+  jupyterServers.set(chapterSegment, { process: proc, port, token, url });
+  proc.on('exit', () => jupyterServers.delete(chapterSegment));
+
+  return { url, token, port };
+});
+
+ipcMain.handle('jupyter:stop', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  if (!rawChapterId) throw new Error('Missing chapterId');
+  const { chapterSegment } = await ensureChapterWorkspaceDir(rawChapterId);
+  const server = jupyterServers.get(chapterSegment);
+  if (server) {
+    try { server.process.kill('SIGTERM'); } catch { /* ignore */ }
+    jupyterServers.delete(chapterSegment);
+  }
+  return { stopped: true };
+});
+
+ipcMain.handle('jupyter:status', async (_event, payload) => {
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  if (!rawChapterId) return { running: false };
+  const { chapterSegment } = await ensureChapterWorkspaceDir(rawChapterId);
+  const server = jupyterServers.get(chapterSegment);
+  if (!server) return { running: false };
+  return { running: true, url: server.url, token: server.token, port: server.port };
 });
 
 const loadIndex = async () => {

@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('tutorApp', {
   createRuntimeSession: (payload) => ipcRenderer.invoke('runtime:createSession', payload),
   reattachRuntimeSession: (payload) => ipcRenderer.invoke('runtime:reattachSession', payload),
 
+  startJupyterServer: (payload) => ipcRenderer.invoke('jupyter:start', payload),
+  stopJupyterServer: (payload) => ipcRenderer.invoke('jupyter:stop', payload),
+  getJupyterStatus: (payload) => ipcRenderer.invoke('jupyter:status', payload),
+
   createCodeFile: (payload) => ipcRenderer.invoke('code:createFile', payload),
   openCodePath: (filePath) => ipcRenderer.invoke('code:openPath', filePath),
   getCodeWorkspaceDir: (payload) => ipcRenderer.invoke('code:getWorkspaceDir', payload),
