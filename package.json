@@ -4,6 +4,7 @@
   "description": "Knoweia desktop app for AI-powered tutoring and course learning.",
   "private": true,
   "version": "0.0.0",
+  "main": "electron/main.mjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
