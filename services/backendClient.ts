@@ -177,29 +177,40 @@ export async function uploadWorkspaceToPresignedUrl(params: {
   }
 
   if (window.tutorApp) {
+    const headers: Record<string, string> = {};
+    if (params.contentType) {
+      headers['Content-Type'] = params.contentType;
+    }
     const response = await window.tutorApp.backendRequest({
       method: 'PUT',
       path: url,
       withAuth: false,
-      headers: {
-        'Content-Type': params.contentType || 'text/plain; charset=utf-8',
-      },
+      headers,
       body: params.content,
     });
     if (!response.ok) {
       const status = Number(response.status || 0);
-      throw new Error(`OSS upload failed (${status || 'network'})`);
+      const detail =
+        typeof response.data === 'string'
+          ? response.data.slice(0, 240)
+          : JSON.stringify(response.data || {}).slice(0, 240);
+      throw new Error(`OSS upload failed (${status || 'network'}): ${detail || 'no detail'}`);
     }
     return;
   }
 
+  const webHeaders: Record<string, string> = {};
+  if (params.contentType) {
+    webHeaders['Content-Type'] = params.contentType;
+  }
   const response = await fetch(url, {
     method: 'PUT',
-    headers: { 'Content-Type': params.contentType || 'text/plain; charset=utf-8' },
+    headers: webHeaders,
     body: params.content,
   });
   if (!response.ok) {
-    throw new Error(`OSS upload failed (${response.status})`);
+    const detail = await response.text().catch(() => '');
+    throw new Error(`OSS upload failed (${response.status}): ${detail.slice(0, 240) || 'no detail'}`);
   }
 }
 
