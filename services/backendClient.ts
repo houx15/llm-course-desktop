@@ -118,6 +118,16 @@ export interface SessionStateResult {
   report_md?: string;
 }
 
+export interface SubmittedWorkspaceFile {
+  id: number;
+  filename: string;
+  chapter_id: string;
+  oss_key: string;
+  file_size_bytes: number;
+  submitted_at: string;
+  download_url?: string | null;
+}
+
 export const fetchSessionState = (chapterId: string, courseId?: string | null): Promise<SessionStateResult> => {
   const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : '';
   return backendClient.get<SessionStateResult>(
@@ -149,4 +159,12 @@ export async function confirmWorkspaceUpload(params: {
     chapter_id: params.chapterId,
     file_size_bytes: params.fileSizeBytes,
   });
+}
+
+export async function listWorkspaceSubmittedFiles(): Promise<{
+  files: SubmittedWorkspaceFile[];
+  quota_used_bytes: number;
+  quota_limit_bytes: number;
+}> {
+  return backendClient.get('/v1/storage/workspace/files');
 }

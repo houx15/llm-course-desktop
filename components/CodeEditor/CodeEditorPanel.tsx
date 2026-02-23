@@ -502,6 +502,11 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const handleSubmit = async () => {
     const filename = mode === 'notebook' ? activeNotebook : activeFile;
     if (!filename || isSubmitting) return;
+    const lower = filename.toLowerCase();
+    if (!(lower.endsWith('.py') || lower.endsWith('.ipynb'))) {
+      console.warn('[CodeEditor] Submit skipped: only .py and .ipynb are supported');
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmitDone(false);

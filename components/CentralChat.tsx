@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Message, Chapter } from '../types';
 import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManager';
 import { syncQueue } from '../services/syncQueue';
-import { fetchSessionState } from '../services/backendClient';
+import { fetchSessionState, listWorkspaceSubmittedFiles } from '../services/backendClient';
+import { codeWorkspace } from '../services/codeWorkspace';
 import { Bot, User, SendHorizontal, Loader2, Paperclip, Terminal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -48,6 +49,38 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [recovering, setRecovering] = useState(false);
   const handledInjectionIdRef = useRef<number | null>(null);
 
+  const isSyncableCodeFile = (name: string) => {
+    const lower = String(name || '').toLowerCase();
+    return lower.endsWith('.py') || lower.endsWith('.ipynb');
+  };
+
+  const restoreWorkspaceFilesFromBackend = async () => {
+    const listing = await listWorkspaceSubmittedFiles();
+    const candidates = (listing.files || [])
+      .filter((file) => file.chapter_id === chapterId)
+      .filter((file) => isSyncableCodeFile(file.filename))
+      .filter((file) => Boolean(file.download_url))
+      .sort((a, b) => Number(new Date(b.submitted_at)) - Number(new Date(a.submitted_at)));
+
+    const latestByName = new Map<string, { filename: string; download_url?: string | null }>();
+    for (const file of candidates) {
+      if (!latestByName.has(file.filename)) {
+        latestByName.set(file.filename, file);
+      }
+    }
+
+    for (const file of latestByName.values()) {
+      if (!file.download_url) continue;
+      const response = await fetch(file.download_url);
+      if (!response.ok) {
+        console.warn('[CentralChat] Failed to download submitted file:', file.filename, response.status);
+        continue;
+      }
+      const content = await response.text();
+      await codeWorkspace.writeFile(chapterId, file.filename, content);
+    }
+  };
+
   const autoResizeTextarea = () => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -66,111 +99,126 @@ const CentralChat: React.FC<CentralChatProps> = ({
     const init = async () => {
       try {
         let sessionRestored = false;
+        setRecovering(true);
 
-        // Step 1: Try to reattach a local sidecar session (same device, same install)
-        const sessions = await runtimeManager.listSessions();
-        const existing = sessions.find(
-          (s) => s.chapter_id === chapterId || s.chapter_id === chapter.id
-        );
-
-        if (existing) {
-          try {
+        // Step 1: backend-first recovery check.
+        try {
+          const state = await fetchSessionState(chapterId, courseId);
+          if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
+            const recoveredTurns = state.turns;
+            const recoveredSessionId = state.session_id;
+            await window.tutorApp!.restoreSessionState({
+              sessionId: recoveredSessionId,
+              chapterId,
+              turns: recoveredTurns,
+              memoryJson: state.memory ?? {},
+              reportMd: state.report_md ?? '',
+            });
+            await restoreWorkspaceFilesFromBackend().catch((error) => {
+              console.warn('[CentralChat] Failed to restore backend workspace files:', error);
+            });
             await runtimeManager.reattachSession({
-              sessionId: existing.session_id,
+              sessionId: recoveredSessionId,
               chapterId,
               courseId,
               chapterScopeId: chapter.id,
             });
-            const [turns, report] = await Promise.all([
-              runtimeManager.getSessionHistory(existing.session_id),
-              runtimeManager.getDynamicReport(existing.session_id).catch(() => ''),
+            const [sidecarTurns, report] = await Promise.all([
+              runtimeManager.getSessionHistory(recoveredSessionId),
+              runtimeManager.getDynamicReport(recoveredSessionId).catch(() => ''),
             ]);
             if (cancelled) return;
-            setSessionId(existing.session_id);
-            if (turns.length === 0) {
-              setMessages([{ role: 'model', text: chapter.initialMessage }]);
-            } else {
-              const msgs: Message[] = turns.flatMap((t) => {
-                const result: Message[] = [];
-                if (t.user_message) result.push({ role: 'user', text: t.user_message });
-                if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
-                return result;
-              });
-              setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
-            }
+            setSessionId(recoveredSessionId);
+            const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : recoveredTurns.map((t) => ({
+              user_message: t.user_message,
+              companion_response: t.companion_response,
+            }));
+            const msgs: Message[] = sourceTurns.flatMap((t) => {
+              const result: Message[] = [];
+              if (t.user_message) result.push({ role: 'user', text: t.user_message });
+              if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
+              return result;
+            });
+            setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
             if (report) {
               onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
             }
             setSessionStarted(true);
             sessionRestored = true;
-          } catch (reattachErr) {
-            // Local reattach failed (sidecar not ready, files missing, etc.)
-            // Fall through to backend recovery below.
-            console.warn('[CentralChat] Local reattach failed, falling back to backend recovery:', reattachErr);
           }
+        } catch (err) {
+          if (cancelled) return;
+          console.warn('[CentralChat] Backend recovery check failed, trying local session:', err);
         }
 
-        // Step 2: If no local session or local reattach failed, try backend cross-device recovery
+        // Step 2: if backend has no active session, fallback to local reattach.
         if (!sessionRestored) {
-          try {
-            const state = await fetchSessionState(chapterId, courseId);
-            if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
-              if (cancelled) return;
-              setRecovering(true);
-              const recoveredTurns = state.turns;
-              const recoveredSessionId = state.session_id;
-              // Write recovered data to sidecar sessions directory
-              await window.tutorApp!.restoreSessionState({
-                sessionId: recoveredSessionId,
-                chapterId,
-                turns: recoveredTurns,
-                memoryJson: state.memory ?? {},
-                reportMd: state.report_md ?? '',
-              });
-              // Reattach the restored session in sidecar
+          const sessions = await runtimeManager.listSessions();
+          const existing = sessions.find(
+            (s) => s.chapter_id === chapterId || s.chapter_id === chapter.id
+          );
+          if (existing) {
+            try {
               await runtimeManager.reattachSession({
-                sessionId: recoveredSessionId,
+                sessionId: existing.session_id,
                 chapterId,
                 courseId,
                 chapterScopeId: chapter.id,
               });
-              const [sidecarTurns, report] = await Promise.all([
-                runtimeManager.getSessionHistory(recoveredSessionId),
-                runtimeManager.getDynamicReport(recoveredSessionId).catch(() => ''),
+              const [turns, report] = await Promise.all([
+                runtimeManager.getSessionHistory(existing.session_id),
+                runtimeManager.getDynamicReport(existing.session_id).catch(() => ''),
               ]);
               if (cancelled) return;
-              setRecovering(false);
-              setSessionId(recoveredSessionId);
-              // Build messages: prefer sidecar turns, fall back to backend turns
-              const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : recoveredTurns.map((t) => ({
-                user_message: t.user_message,
-                companion_response: t.companion_response,
-              }));
-              const msgs: Message[] = sourceTurns.flatMap((t) => {
-                const result: Message[] = [];
-                if (t.user_message) result.push({ role: 'user', text: t.user_message });
-                if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
-                return result;
-              });
-              setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+              setSessionId(existing.session_id);
+              if (turns.length === 0) {
+                setMessages([{ role: 'model', text: chapter.initialMessage }]);
+              } else {
+                const msgs: Message[] = turns.flatMap((t) => {
+                  const result: Message[] = [];
+                  if (t.user_message) result.push({ role: 'user', text: t.user_message });
+                  if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
+                  return result;
+                });
+                setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+              }
               if (report) {
                 onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
               }
               setSessionStarted(true);
+              sessionRestored = true;
+            } catch (reattachErr) {
+              console.warn('[CentralChat] Local reattach failed:', reattachErr);
             }
-            // has_data: false → fall through to landing screen
-          } catch (err) {
-            if (cancelled) return;
-            console.warn('[CentralChat] Backend recovery check failed, starting fresh:', err);
-            setRecovering(false);
           }
         }
-        // No session found anywhere → show landing screen, wait for user to click "开启本章学习"
+
+        // Step 3: no backend/local session → create a new backend-bound session immediately.
+        if (!sessionRestored) {
+          try {
+            const created = await runtimeManager.createSession({
+              chapterId,
+              courseId,
+              chapterScopeId: chapter.id,
+            });
+            if (cancelled) return;
+            setSessionId(created.sessionId);
+            setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
+            setSessionStarted(true);
+          } catch (createErr) {
+            if (cancelled) return;
+            console.warn('[CentralChat] Auto-create session failed:', createErr);
+            setSessionStarted(false);
+          }
+        }
       } catch (error) {
         if (cancelled) return;
         console.warn('Session check failed:', error);
       } finally {
-        if (!cancelled) setIsInitializing(false);
+        if (!cancelled) {
+          setRecovering(false);
+          setIsInitializing(false);
+        }
       }
     };
 
@@ -179,7 +227,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [chapter.id]);
+  }, [chapter.id, courseId]);
 
   const handleStartChapter = async () => {
     if (isLoading) return;
