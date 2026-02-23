@@ -1999,13 +1999,13 @@ const resolveRuntimeProjectRoot = async () => {
   return null;
 };
 
-const buildSidecarSessionContext = async (chapterId) => {
+const buildSidecarSessionContext = async (params) => {
+  const chapterId = String(params?.chapterId || '').trim();
+  const courseId = String(params?.courseId || '').trim();
+  const chapterScopeIdInput = String(params?.chapterScopeId || '').trim();
   const indexData = await loadIndex();
-  const normalizedChapterId = String(chapterId || '').trim();
-  const [courseId, chapterCode] = normalizedChapterId.includes('/')
-    ? normalizedChapterId.split('/', 2)
-    : ['', normalizedChapterId];
-  const chapterScopeId = courseId ? `${courseId}/${chapterCode}` : chapterCode;
+  const chapterCode = chapterId;
+  const chapterScopeId = chapterScopeIdInput || chapterCode;
 
   const chapterEntry = indexData?.chapter?.[chapterScopeId] || null;
   const appAgentsEntry = indexData?.app_agents?.core || null;
@@ -2033,10 +2033,10 @@ const buildSidecarSessionContext = async (chapterId) => {
 
   return {
     chapter_scope: {
-      chapter_id: normalizedChapterId,
+      chapter_id: chapterCode,
       course_id: courseId || null,
       chapter_code: chapterCode || null,
-      scope_id: chapterScopeId || normalizedChapterId,
+      scope_id: chapterScopeId || chapterCode,
     },
     bundle_paths: {
       chapter_bundle_path: chapterEntry?.path || null,
@@ -2290,12 +2290,11 @@ ipcMain.handle('runtime:getLogs', async () => {
 
 ipcMain.handle('runtime:createSession', async (_event, payload) => {
   const chapterId = String(payload?.chapterId || '').trim();
+  const courseId = String(payload?.courseId || '').trim() || null;
+  const chapterScopeId = String(payload?.chapterScopeId || '').trim() || null;
   if (!chapterId) {
     throw new Error('Missing chapterId');
   }
-
-  // Derive courseId from chapterId (format: 'courseId/chapterCode' or just 'chapterCode')
-  const courseId = chapterId.includes('/') ? chapterId.split('/')[0] : null;
 
   // Step 1: Register session with backend (best-effort — failure falls back to local-only mode)
   let backendSessionId;
@@ -2317,7 +2316,7 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
   }
 
   const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
-  const desktopContext = await buildSidecarSessionContext(chapterId);
+  const desktopContext = await buildSidecarSessionContext({ chapterId, courseId, chapterScopeId });
 
   const sidecarBody = {
     chapter_id: chapterId,

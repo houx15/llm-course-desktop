@@ -273,7 +273,11 @@ declare global {
         stderr?: string;
         runtime?: any;
       }>;
-      createRuntimeSession: (payload: { chapterId: string }) => Promise<{ session_id: string; initial_message?: string }>;
+      createRuntimeSession: (payload: {
+        chapterId: string;
+        courseId?: string | null;
+        chapterScopeId?: string | null;
+      }) => Promise<{ session_id: string; initial_message?: string }>;
       reattachRuntimeSession: (payload: { sessionId: string; chapterId: string }) => Promise<{ status: string }>;
       restoreSessionState: (payload: {
         sessionId: string;

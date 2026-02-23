@@ -67,7 +67,9 @@ const CentralChat: React.FC<CentralChatProps> = ({
       try {
         // Check for an existing session for this chapter
         const sessions = await runtimeManager.listSessions();
-        const existing = sessions.find((s) => s.chapter_id === chapter.id);
+        const existing = sessions.find(
+          (s) => s.chapter_id === chapterId || s.chapter_id === chapter.id
+        );
 
         if (existing) {
           await runtimeManager.reattachSession(existing.session_id, chapter.id);
@@ -97,7 +99,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
         } else {
           // No existing local session — check backend for cross-device recovery
           try {
-            const state = await fetchSessionState(chapter.id);
+            const state = await fetchSessionState(chapterId, courseId);
             if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
               if (cancelled) return;
               setRecovering(true);
@@ -176,7 +178,11 @@ const CentralChat: React.FC<CentralChatProps> = ({
     }, 400);
 
     try {
-      const created = await runtimeManager.createSession(chapter.id);
+      const created = await runtimeManager.createSession({
+        chapterId,
+        courseId,
+        chapterScopeId: chapter.id,
+      });
       clearInterval(timer);
       setInitProgress(100);
       // Brief pause so the user sees 100% before the chat appears.

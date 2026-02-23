@@ -302,7 +302,7 @@ export const runtimeManager = {
     await window.tutorApp.reattachRuntimeSession({ sessionId, chapterId });
   },
 
-  async createSession(chapterId: string) {
+  async createSession(params: { chapterId: string; courseId?: string | null; chapterScopeId?: string | null }) {
     const started = await this.ensureStarted();
     if (!started.started) {
       throw new Error(started.reason || 'Failed to start sidecar');
@@ -312,7 +312,7 @@ export const runtimeManager = {
       throw new Error('tutorApp API unavailable');
     }
 
-    const data = await window.tutorApp.createRuntimeSession({ chapterId });
+    const data = await window.tutorApp.createRuntimeSession(params);
     return {
       sessionId: String(data.session_id),
       initialMessage: String(data.initial_message || ''),

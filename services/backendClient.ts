@@ -118,8 +118,11 @@ export interface SessionStateResult {
   report_md?: string;
 }
 
-export const fetchSessionState = (chapterId: string): Promise<SessionStateResult> => {
-  return backendClient.get<SessionStateResult>(`/v1/chapters/${encodeURIComponent(chapterId)}/session-state`);
+export const fetchSessionState = (chapterId: string, courseId?: string | null): Promise<SessionStateResult> => {
+  const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : '';
+  return backendClient.get<SessionStateResult>(
+    `/v1/chapters/${encodeURIComponent(chapterId)}/session-state${query}`
+  );
 };
 
 export async function getWorkspaceUploadUrl(params: {
