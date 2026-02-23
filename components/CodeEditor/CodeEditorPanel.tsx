@@ -564,6 +564,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       await uploadWorkspaceToPresignedUrl({
         presignedUrl: presigned_url,
         content,
+        headers: required_headers || undefined,
       });
 
       // Confirm with backend

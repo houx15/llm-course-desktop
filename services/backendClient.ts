@@ -139,7 +139,7 @@ export async function getWorkspaceUploadUrl(params: {
   chapterId: string;
   filename: string;
   fileSizeBytes: number;
-}): Promise<{ presigned_url: string; oss_key: string }> {
+}): Promise<{ presigned_url: string; oss_key: string; required_headers?: Record<string, string> }> {
   return backendClient.post('/v1/storage/workspace/upload-url', {
     chapter_id: params.chapterId,
     filename: params.filename,
@@ -165,6 +165,7 @@ export async function uploadWorkspaceToPresignedUrl(params: {
   presignedUrl: string;
   content: string;
   contentType?: string;
+  headers?: Record<string, string>;
 }): Promise<void> {
   const url = String(params.presignedUrl || '').trim();
   if (!url) {
@@ -177,8 +178,8 @@ export async function uploadWorkspaceToPresignedUrl(params: {
   }
 
   if (window.tutorApp) {
-    const headers: Record<string, string> = {};
-    if (params.contentType) {
+    const headers: Record<string, string> = { ...(params.headers || {}) };
+    if (params.contentType && !Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) {
       headers['Content-Type'] = params.contentType;
     }
     const response = await window.tutorApp.backendRequest({
@@ -201,7 +202,8 @@ export async function uploadWorkspaceToPresignedUrl(params: {
   }
 
   const webHeaders: Record<string, string> = {};
-  if (params.contentType) {
+  Object.assign(webHeaders, params.headers || {});
+  if (params.contentType && !Object.keys(webHeaders).some((k) => k.toLowerCase() === 'content-type')) {
     webHeaders['Content-Type'] = params.contentType;
   }
   const response = await fetch(url, {
