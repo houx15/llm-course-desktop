@@ -38,6 +38,7 @@ let runtimeLaunchInfo = null;
 const codeExecutionByChapter = new Map();
 const jupyterServers = new Map(); // chapterSegment → { process, port, token, url }
 const DEFAULT_CODE_TIMEOUT_MS = 60_000;
+const createSessionInFlight = new Map();
 
 const findFreePort = () =>
   new Promise((resolve, reject) => {
@@ -2300,74 +2301,85 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
   if (!chapterId) {
     throw new Error('Missing chapterId');
   }
+  const inFlightKey = String(chapterScopeId || chapterId);
+  const existingInFlight = createSessionInFlight.get(inFlightKey);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
 
-  // Step 1: Register session with backend (best-effort — failure falls back to local-only mode)
-  let backendSessionId;
-  const auth = await loadAuthStore();
-  if (auth?.accessToken) {
-    try {
-      const backendResp = await requestBackend({
-        method: 'POST',
-        path: `/v1/chapters/${encodeURIComponent(chapterId)}/sessions`,
-        body: { course_id: courseId },
-        withAuth: true,
-      });
-      if (backendResp.ok && backendResp.data?.session_id) {
-        backendSessionId = backendResp.data.session_id;
-      } else {
-        throw new Error(`status=${backendResp.status}`);
+  const createPromise = (async () => {
+    // Step 1: Register session with backend
+    let backendSessionId;
+    const auth = await loadAuthStore();
+    if (auth?.accessToken) {
+      try {
+        const backendResp = await requestBackend({
+          method: 'POST',
+          path: `/v1/chapters/${encodeURIComponent(chapterId)}/sessions`,
+          body: { course_id: courseId },
+          withAuth: true,
+        });
+        if (backendResp.ok && backendResp.data?.session_id) {
+          backendSessionId = backendResp.data.session_id;
+        } else {
+          throw new Error(`status=${backendResp.status}`);
+        }
+      } catch (err) {
+        throw new Error(`[runtime:createSession] Backend registration failed: ${err?.message || 'unknown error'}`);
       }
-    } catch (err) {
-      throw new Error(`[runtime:createSession] Backend registration failed: ${err?.message || 'unknown error'}`);
     }
-  }
 
-  const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
-  const desktopContext = await buildSidecarSessionContext({ chapterId, courseId, chapterScopeId });
+    const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
+    const desktopContext = await buildSidecarSessionContext({ chapterId, courseId, chapterScopeId });
 
-  const sidecarBody = {
-    chapter_id: chapterId,
-    desktop_context: desktopContext,
-  };
-  if (backendSessionId) {
-    // Re-read auth in case requestBackend() performed a silent token refresh
-    const freshAuth = await loadAuthStore();
-    if (freshAuth?.accessToken) {
-      sidecarBody.session_id = backendSessionId;
-      sidecarBody.backend_url = BACKEND_BASE_URL;
-      sidecarBody.auth_token = freshAuth.accessToken;
+    const sidecarBody = {
+      chapter_id: chapterId,
+      desktop_context: desktopContext,
+    };
+    if (backendSessionId) {
+      // Re-read auth in case requestBackend() performed a silent token refresh
+      const freshAuth = await loadAuthStore();
+      if (freshAuth?.accessToken) {
+        sidecarBody.session_id = backendSessionId;
+        sidecarBody.backend_url = BACKEND_BASE_URL;
+        sidecarBody.auth_token = freshAuth.accessToken;
+      }
     }
-  }
 
-  const createController = new AbortController();
-  const createTimeout = setTimeout(() => createController.abort(), 45_000);
-  let response;
-  try {
-    response = await fetch(`${baseUrl}/api/session/new`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sidecarBody),
-      signal: createController.signal,
-    });
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      throw new Error('Sidecar create session timed out (45s)');
+    const createController = new AbortController();
+    const createTimeout = setTimeout(() => createController.abort(), 45_000);
+    let response;
+    try {
+      response = await fetch(`${baseUrl}/api/session/new`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sidecarBody),
+        signal: createController.signal,
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw new Error('Sidecar create session timed out (45s)');
+      }
+      throw error;
+    } finally {
+      clearTimeout(createTimeout);
     }
-    throw error;
-  } finally {
-    clearTimeout(createTimeout);
-  }
 
-  const parsed = await parseBackendResponse(response);
-  if (!response.ok) {
-    const detail =
-      typeof parsed === 'string'
-        ? parsed
-        : parsed?.error?.message || parsed?.detail || `Create session failed (${response.status})`;
-    throw new Error(String(detail));
-  }
+    const parsed = await parseBackendResponse(response);
+    if (!response.ok) {
+      const detail =
+        typeof parsed === 'string'
+          ? parsed
+          : parsed?.error?.message || parsed?.detail || `Create session failed (${response.status})`;
+      throw new Error(String(detail));
+    }
+    return parsed;
+  })().finally(() => {
+    createSessionInFlight.delete(inFlightKey);
+  });
 
-  return parsed;
+  createSessionInFlight.set(inFlightKey, createPromise);
+  return createPromise;
 });
 
 ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
