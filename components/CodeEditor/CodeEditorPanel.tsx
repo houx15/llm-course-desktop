@@ -521,9 +521,10 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
 
       const blob = new Blob([content], { type: 'text/plain' });
       const fileSizeBytes = blob.size;
+      const backendChapterId = chapterId.includes('/') ? chapterId.split('/').pop() || chapterId : chapterId;
 
       const { presigned_url, oss_key } = await getWorkspaceUploadUrl({
-        chapterId,
+        chapterId: backendChapterId,
         filename,
         fileSizeBytes,
       });
@@ -535,7 +536,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       }
 
       // Confirm with backend
-      await confirmWorkspaceUpload({ ossKey: oss_key, filename, chapterId, fileSizeBytes });
+      await confirmWorkspaceUpload({ ossKey: oss_key, filename, chapterId: backendChapterId, fileSizeBytes });
 
       setSubmitDone(true);
       window.setTimeout(() => setSubmitDone(false), 2000);

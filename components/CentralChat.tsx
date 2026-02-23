@@ -57,7 +57,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const restoreWorkspaceFilesFromBackend = async () => {
     const listing = await listWorkspaceSubmittedFiles();
     const candidates = (listing.files || [])
-      .filter((file) => file.chapter_id === chapterId)
+      .filter((file) => file.chapter_id === chapterId || file.chapter_id === chapter.id)
       .filter((file) => isSyncableCodeFile(file.filename))
       .filter((file) => Boolean(file.download_url))
       .sort((a, b) => Number(new Date(b.submitted_at)) - Number(new Date(a.submitted_at)));
@@ -77,7 +77,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
         continue;
       }
       const content = await response.text();
-      await codeWorkspace.writeFile(chapterId, file.filename, content);
+      await codeWorkspace.writeFile(chapter.id, file.filename, content);
     }
   };
 
@@ -100,12 +100,16 @@ const CentralChat: React.FC<CentralChatProps> = ({
       try {
         let sessionRestored = false;
         setRecovering(true);
+        let backendChecked = false;
+        let backendHasData = false;
 
         // Step 1: backend-first recovery check.
         try {
           const state = await fetchSessionState(chapterId, courseId);
-          if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
-            const recoveredTurns = state.turns;
+          backendChecked = true;
+          backendHasData = Boolean(state.has_data);
+          if (state.has_data && state.session_id) {
+            const recoveredTurns = state.turns || [];
             const recoveredSessionId = state.session_id;
             await window.tutorApp!.restoreSessionState({
               sessionId: recoveredSessionId,
@@ -148,11 +152,12 @@ const CentralChat: React.FC<CentralChatProps> = ({
           }
         } catch (err) {
           if (cancelled) return;
-          console.warn('[CentralChat] Backend recovery check failed, trying local session:', err);
+          console.warn('[CentralChat] Backend recovery check failed, falling back to local session:', err);
         }
 
-        // Step 2: if backend has no active session, fallback to local reattach.
-        if (!sessionRestored) {
+        // Step 2: local fallback when backend is unavailable, or when backend has data but
+        // backend-driven restore failed unexpectedly.
+        if (!sessionRestored && (!backendChecked || backendHasData)) {
           const sessions = await runtimeManager.listSessions();
           const existing = sessions.find(
             (s) => s.chapter_id === chapterId || s.chapter_id === chapter.id
@@ -193,8 +198,13 @@ const CentralChat: React.FC<CentralChatProps> = ({
           }
         }
 
-        // Step 3: no backend/local session → create a new backend-bound session immediately.
+        // Step 3: backend has no active session (or no local fallback) -> create a new session.
+        // This enforces: backend empty => create new.
         if (!sessionRestored) {
+          if (backendChecked && backendHasData) {
+            console.warn('[CentralChat] Backend reports data but restore failed; skipping auto-create to avoid duplicate session.');
+            return;
+          }
           try {
             const created = await runtimeManager.createSession({
               chapterId,

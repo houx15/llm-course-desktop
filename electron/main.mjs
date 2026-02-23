@@ -2314,9 +2314,11 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
       });
       if (backendResp.ok && backendResp.data?.session_id) {
         backendSessionId = backendResp.data.session_id;
+      } else {
+        throw new Error(`status=${backendResp.status}`);
       }
     } catch (err) {
-      console.warn('[runtime:createSession] Backend registration failed, continuing local-only:', err?.message);
+      throw new Error(`[runtime:createSession] Backend registration failed: ${err?.message || 'unknown error'}`);
     }
   }
 
@@ -2396,6 +2398,7 @@ ipcMain.handle('session:restore', async (_event, { sessionId, chapterId, turns, 
   await fs.mkdir(sessionsDir, { recursive: true });
 
   const turnsDir = path.join(sessionsDir, 'turns');
+  await fs.rm(turnsDir, { recursive: true, force: true });
   await fs.mkdir(turnsDir, { recursive: true });
 
   for (const turn of turns) {
