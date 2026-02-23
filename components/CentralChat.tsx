@@ -205,6 +205,9 @@ const CentralChat: React.FC<CentralChatProps> = ({
             console.warn('[CentralChat] Backend reports data but restore failed; skipping auto-create to avoid duplicate session.');
             return;
           }
+          // Creating a new session may take longer (sidecar + initial agent call),
+          // so this is no longer "recovery".
+          setRecovering(false);
           try {
             const created = await runtimeManager.createSession({
               chapterId,

@@ -2339,11 +2339,24 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
     }
   }
 
-  const response = await fetch(`${baseUrl}/api/session/new`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(sidecarBody),
-  });
+  const createController = new AbortController();
+  const createTimeout = setTimeout(() => createController.abort(), 45_000);
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/api/session/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sidecarBody),
+      signal: createController.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Sidecar create session timed out (45s)');
+    }
+    throw error;
+  } finally {
+    clearTimeout(createTimeout);
+  }
 
   const parsed = await parseBackendResponse(response);
   if (!response.ok) {
@@ -2375,11 +2388,24 @@ ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
     reattachBody.auth_token = auth.accessToken;
   }
 
-  const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/reattach`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(reattachBody),
-  });
+  const reattachController = new AbortController();
+  const reattachTimeout = setTimeout(() => reattachController.abort(), 20_000);
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/reattach`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reattachBody),
+      signal: reattachController.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Sidecar reattach timed out (20s)');
+    }
+    throw error;
+  } finally {
+    clearTimeout(reattachTimeout);
+  }
 
   if (!response.ok) {
     const parsed = await parseBackendResponse(response).catch(() => ({}));
