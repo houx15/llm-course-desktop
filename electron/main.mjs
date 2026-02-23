@@ -2347,7 +2347,7 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
     }
 
     const createController = new AbortController();
-    const createTimeout = setTimeout(() => createController.abort(), 45_000);
+    const createTimeout = setTimeout(() => createController.abort(), 120_000);
     let response;
     try {
       response = await fetch(`${baseUrl}/api/session/new`, {
@@ -2358,7 +2358,7 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
       });
     } catch (error) {
       if (error?.name === 'AbortError') {
-        throw new Error('Sidecar create session timed out (45s)');
+        throw new Error('Sidecar create session timed out (120s)');
       }
       throw error;
     } finally {
