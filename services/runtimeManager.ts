@@ -297,9 +297,14 @@ export const runtimeManager = {
     return { started: true };
   },
 
-  async reattachSession(sessionId: string, chapterId: string) {
+  async reattachSession(params: {
+    sessionId: string;
+    chapterId: string;
+    courseId?: string | null;
+    chapterScopeId?: string | null;
+  }) {
     if (!window.tutorApp) return;
-    await window.tutorApp.reattachRuntimeSession({ sessionId, chapterId });
+    await window.tutorApp.reattachRuntimeSession(params);
   },
 
   async createSession(params: { chapterId: string; courseId?: string | null; chapterScopeId?: string | null }) {

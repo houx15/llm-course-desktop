@@ -278,7 +278,12 @@ declare global {
         courseId?: string | null;
         chapterScopeId?: string | null;
       }) => Promise<{ session_id: string; initial_message?: string }>;
-      reattachRuntimeSession: (payload: { sessionId: string; chapterId: string }) => Promise<{ status: string }>;
+      reattachRuntimeSession: (payload: {
+        sessionId: string;
+        chapterId: string;
+        courseId?: string | null;
+        chapterScopeId?: string | null;
+      }) => Promise<{ status: string }>;
       restoreSessionState: (payload: {
         sessionId: string;
         chapterId: string;

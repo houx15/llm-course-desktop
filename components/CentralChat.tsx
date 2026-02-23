@@ -75,7 +75,12 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
         if (existing) {
           try {
-            await runtimeManager.reattachSession(existing.session_id, chapter.id);
+            await runtimeManager.reattachSession({
+              sessionId: existing.session_id,
+              chapterId,
+              courseId,
+              chapterScopeId: chapter.id,
+            });
             const [turns, report] = await Promise.all([
               runtimeManager.getSessionHistory(existing.session_id),
               runtimeManager.getDynamicReport(existing.session_id).catch(() => ''),
@@ -123,7 +128,12 @@ const CentralChat: React.FC<CentralChatProps> = ({
                 reportMd: state.report_md ?? '',
               });
               // Reattach the restored session in sidecar
-              await runtimeManager.reattachSession(recoveredSessionId, chapter.id);
+              await runtimeManager.reattachSession({
+                sessionId: recoveredSessionId,
+                chapterId,
+                courseId,
+                chapterScopeId: chapter.id,
+              });
               const [sidecarTurns, report] = await Promise.all([
                 runtimeManager.getSessionHistory(recoveredSessionId),
                 runtimeManager.getDynamicReport(recoveredSessionId).catch(() => ''),

@@ -2358,17 +2358,25 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
 ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
   const sessionId = String(payload?.sessionId || '').trim();
   const chapterId = String(payload?.chapterId || '').trim();
+  const courseId = String(payload?.courseId || '').trim() || null;
+  const chapterScopeId = String(payload?.chapterScopeId || '').trim() || null;
   if (!sessionId || !chapterId) {
     throw new Error('Missing sessionId or chapterId');
   }
 
   const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
-  const desktopContext = await buildSidecarSessionContext({ chapterId });
+  const desktopContext = await buildSidecarSessionContext({ chapterId, courseId, chapterScopeId });
+  const auth = await loadAuthStore();
+  const reattachBody = { desktop_context: desktopContext };
+  if (auth?.accessToken) {
+    reattachBody.backend_url = BACKEND_BASE_URL;
+    reattachBody.auth_token = auth.accessToken;
+  }
 
   const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/reattach`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ desktop_context: desktopContext }),
+    body: JSON.stringify(reattachBody),
   });
 
   if (!response.ok) {
