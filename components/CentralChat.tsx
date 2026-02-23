@@ -4,7 +4,7 @@ import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManage
 import { syncQueue } from '../services/syncQueue';
 import { fetchSessionState, listWorkspaceSubmittedFiles } from '../services/backendClient';
 import { codeWorkspace } from '../services/codeWorkspace';
-import { Bot, User, SendHorizontal, Loader2, Paperclip, Terminal } from 'lucide-react';
+import { Bot, User, SendHorizontal, Loader2, Terminal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -647,9 +647,11 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
       <div className="p-6 bg-white border-t border-gray-100 z-10">
         <div className="max-w-4xl mx-auto relative flex gap-3 items-end">
+          {/* TODO: re-enable attachment flow after backend + upload UX is finalized.
           <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors" title="添加附件">
             <Paperclip size={20} />
           </button>
+          */}
 
           {onStartCoding && (
             <button

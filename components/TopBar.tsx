@@ -49,7 +49,7 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick, onToggleSi
 
           {/* Right Actions */}
           <div className="flex items-center gap-3">
-              {onToggleSidebar && (
+              {/* {onToggleSidebar && (
                 <button
                   onClick={onToggleSidebar}
                   className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -57,7 +57,7 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick, onToggleSi
                 >
                   {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
                 </button>
-              )}
+              )} */}
               <button
                 onClick={() => setIsSettingsOpen(true)}
                 className="flex items-center gap-4 p-1.5 pl-4 rounded-xl border border-transparent hover:bg-gray-50 hover:border-gray-200 transition-all group"
