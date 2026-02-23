@@ -626,9 +626,24 @@ const requestBackend = async (payload = {}) => {
 
   let body;
   if (payload.body !== undefined && payload.body !== null) {
-    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
-    const contentType = String(headers['Content-Type'] || headers['content-type'] || '').toLowerCase();
-    body = contentType.includes('application/json') ? JSON.stringify(payload.body) : payload.body;
+    const headerEntries = Object.entries(headers || {});
+    const contentTypeEntry = headerEntries.find(([key]) => String(key).toLowerCase() === 'content-type');
+    const hasExplicitContentType = Boolean(contentTypeEntry);
+    const explicitContentType = String(contentTypeEntry?.[1] || '').toLowerCase();
+    const rawBodyRequested = Boolean(payload.rawBody);
+    const isStringBody = typeof payload.body === 'string';
+
+    // For presigned uploads and other raw requests, never force JSON encoding.
+    if (rawBodyRequested) {
+      body = payload.body;
+    } else if (!hasExplicitContentType) {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(payload.body);
+    } else if (explicitContentType.includes('application/json') && !isStringBody) {
+      body = JSON.stringify(payload.body);
+    } else {
+      body = payload.body;
+    }
   }
 
   const firstAttempt = await executeBackendFetch({ url, method, headers, body });

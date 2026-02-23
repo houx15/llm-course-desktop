@@ -159,6 +159,7 @@ declare global {
         body?: any;
         headers?: Record<string, string>;
         withAuth?: boolean;
+        rawBody?: boolean;
       }) => Promise<{
         ok: boolean;
         status: number;

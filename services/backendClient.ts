@@ -185,6 +185,7 @@ export async function uploadWorkspaceToPresignedUrl(params: {
       method: 'PUT',
       path: url,
       withAuth: false,
+      rawBody: true,
       headers,
       body: params.content,
     });
