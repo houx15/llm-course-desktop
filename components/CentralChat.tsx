@@ -43,6 +43,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [initProgress, setInitProgress] = useState(0);
+  const [initMode, setInitMode] = useState<'idle' | 'creating' | 'restoring'>('idle');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -88,82 +89,147 @@ const CentralChat: React.FC<CentralChatProps> = ({
     ta.style.height = `${Math.min(ta.scrollHeight, 300)}px`;
   };
 
+  const turnsToMessages = (
+    turns: Array<{ user_message: string; companion_response: string }>
+  ): Message[] => {
+    return turns.flatMap((t) => {
+      const result: Message[] = [];
+      if (t.user_message) result.push({ role: 'user', text: t.user_message });
+      if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
+      return result;
+    });
+  };
+
+  const startInitProgress = (mode: 'creating' | 'restoring') => {
+    setInitMode(mode);
+    setIsInitializing(false);
+    setRecovering(false);
+    setIsLoading(true);
+    setInitProgress(8);
+
+    const timer = setInterval(() => {
+      setInitProgress((p) => {
+        if (p >= 92) {
+          clearInterval(timer);
+          return p;
+        }
+        const step = p < 40 ? 5 : p < 75 ? 3 : 1;
+        return Math.min(92, p + step);
+      });
+    }, 350);
+
+    return () => clearInterval(timer);
+  };
+
   useEffect(() => {
     let cancelled = false;
     setIsInitializing(true);
     setRecovering(false);
+    setIsLoading(false);
     setSessionStarted(false);
     setSessionId(null);
     setMessages([]);
+    setInitProgress(0);
+    setInitMode('idle');
 
     const init = async () => {
       try {
-        let sessionRestored = false;
         setRecovering(true);
         let backendChecked = false;
-        let backendHasData = false;
-
-        // Step 1: backend-first recovery check.
         try {
           const state = await fetchSessionState(chapterId, courseId);
           backendChecked = true;
-          backendHasData = Boolean(state.has_data);
+
           if (state.has_data && state.session_id) {
+            const recoveredSessionId = String(state.session_id);
+            const localSessions = await runtimeManager.listSessions();
+            const localMatch = localSessions.find((s) => s.session_id === recoveredSessionId);
+
+            // Backend has an active session and local data exists -> enter directly from local.
+            if (localMatch) {
+              await runtimeManager.reattachSession({
+                sessionId: recoveredSessionId,
+                chapterId,
+                courseId,
+                chapterScopeId: chapter.id,
+              });
+              const [turns, report] = await Promise.all([
+                runtimeManager.getSessionHistory(recoveredSessionId),
+                runtimeManager.getDynamicReport(recoveredSessionId).catch(() => ''),
+              ]);
+              if (cancelled) return;
+
+              setSessionId(recoveredSessionId);
+              const msgs = turnsToMessages(turns);
+              setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+              if (report) {
+                onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
+              }
+              setSessionStarted(true);
+              return;
+            }
+
+            // Backend has session but local is missing -> restore backend data with progress.
+            const stopProgress = startInitProgress('restoring');
             const recoveredTurns = state.turns || [];
-            const recoveredSessionId = state.session_id;
-            await window.tutorApp!.restoreSessionState({
-              sessionId: recoveredSessionId,
-              chapterId,
-              turns: recoveredTurns,
-              memoryJson: state.memory ?? {},
-              reportMd: state.report_md ?? '',
-            });
-            await restoreWorkspaceFilesFromBackend().catch((error) => {
-              console.warn('[CentralChat] Failed to restore backend workspace files:', error);
-            });
-            await runtimeManager.reattachSession({
-              sessionId: recoveredSessionId,
-              chapterId,
-              courseId,
-              chapterScopeId: chapter.id,
-            });
-            const [sidecarTurns, report] = await Promise.all([
-              runtimeManager.getSessionHistory(recoveredSessionId),
-              runtimeManager.getDynamicReport(recoveredSessionId).catch(() => ''),
-            ]);
+            let sidecarTurns: Array<{ user_message: string; companion_response: string }> = [];
+            let report = '';
+            try {
+              await window.tutorApp!.restoreSessionState({
+                sessionId: recoveredSessionId,
+                chapterId,
+                turns: recoveredTurns,
+                memoryJson: state.memory ?? {},
+                reportMd: state.report_md ?? '',
+              });
+              setInitProgress((p) => Math.max(p, 55));
+              await restoreWorkspaceFilesFromBackend().catch((error) => {
+                console.warn('[CentralChat] Failed to restore backend workspace files:', error);
+              });
+              setInitProgress((p) => Math.max(p, 75));
+              await runtimeManager.reattachSession({
+                sessionId: recoveredSessionId,
+                chapterId,
+                courseId,
+                chapterScopeId: chapter.id,
+              });
+              setInitProgress((p) => Math.max(p, 88));
+              [sidecarTurns, report] = await Promise.all([
+                runtimeManager.getSessionHistory(recoveredSessionId),
+                runtimeManager.getDynamicReport(recoveredSessionId).catch(() => ''),
+              ]);
+            } finally {
+              stopProgress();
+            }
             if (cancelled) return;
+            setInitProgress(100);
+            await new Promise((r) => setTimeout(r, 250));
             setSessionId(recoveredSessionId);
             const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : recoveredTurns.map((t) => ({
               user_message: t.user_message,
               companion_response: t.companion_response,
             }));
-            const msgs: Message[] = sourceTurns.flatMap((t) => {
-              const result: Message[] = [];
-              if (t.user_message) result.push({ role: 'user', text: t.user_message });
-              if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
-              return result;
-            });
+            const msgs = turnsToMessages(sourceTurns);
             setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
             if (report) {
               onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
             }
             setSessionStarted(true);
-            sessionRestored = true;
+            return;
           }
         } catch (err) {
           if (cancelled) return;
-          console.warn('[CentralChat] Backend recovery check failed, falling back to local session:', err);
+          console.warn('[CentralChat] Backend recovery check failed:', err);
         }
 
-        // Step 2: local fallback when backend is unavailable, or when backend has data but
-        // backend-driven restore failed unexpectedly.
-        if (!sessionRestored && (!backendChecked || backendHasData)) {
-          const sessions = await runtimeManager.listSessions();
-          const existing = sessions.find(
-            (s) => s.chapter_id === chapterId || s.chapter_id === chapter.id
-          );
-          if (existing) {
-            try {
+        // Backend unavailable -> local fallback by chapter if possible.
+        if (!backendChecked) {
+          try {
+            const sessions = await runtimeManager.listSessions();
+            const existing = sessions.find(
+              (s) => s.chapter_id === chapterId || s.chapter_id === chapter.id
+            );
+            if (existing) {
               await runtimeManager.reattachSession({
                 sessionId: existing.session_id,
                 chapterId,
@@ -176,53 +242,40 @@ const CentralChat: React.FC<CentralChatProps> = ({
               ]);
               if (cancelled) return;
               setSessionId(existing.session_id);
-              if (turns.length === 0) {
-                setMessages([{ role: 'model', text: chapter.initialMessage }]);
-              } else {
-                const msgs: Message[] = turns.flatMap((t) => {
-                  const result: Message[] = [];
-                  if (t.user_message) result.push({ role: 'user', text: t.user_message });
-                  if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
-                  return result;
-                });
-                setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
-              }
+              const msgs = turnsToMessages(turns);
+              setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
               if (report) {
                 onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
               }
               setSessionStarted(true);
-              sessionRestored = true;
-            } catch (reattachErr) {
-              console.warn('[CentralChat] Local reattach failed:', reattachErr);
+              return;
             }
+          } catch (localErr) {
+            if (cancelled) return;
+            console.warn('[CentralChat] Local fallback failed:', localErr);
           }
         }
 
-        // Step 3: backend has no active session (or no local fallback) -> create a new session.
-        // This enforces: backend empty => create new.
-        if (!sessionRestored) {
-          if (backendChecked && backendHasData) {
-            console.warn('[CentralChat] Backend reports data but restore failed; skipping auto-create to avoid duplicate session.');
-            return;
-          }
-          // Creating a new session may take longer (sidecar + initial agent call),
-          // so this is no longer "recovery".
-          setRecovering(false);
-          try {
-            const created = await runtimeManager.createSession({
-              chapterId,
-              courseId,
-              chapterScopeId: chapter.id,
-            });
-            if (cancelled) return;
-            setSessionId(created.sessionId);
-            setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
-            setSessionStarted(true);
-          } catch (createErr) {
-            if (cancelled) return;
-            console.warn('[CentralChat] Auto-create session failed:', createErr);
-            setSessionStarted(false);
-          }
+        // No backend session + no local fallback -> enter chapter and auto-create with progress.
+        const stopProgress = startInitProgress('creating');
+        try {
+          const created = await runtimeManager.createSession({
+            chapterId,
+            courseId,
+            chapterScopeId: chapter.id,
+          });
+          if (cancelled) return;
+          setInitProgress(100);
+          await new Promise((r) => setTimeout(r, 250));
+          setSessionId(created.sessionId);
+          setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
+          setSessionStarted(true);
+        } catch (createErr) {
+          if (cancelled) return;
+          console.warn('[CentralChat] Auto-create session failed:', createErr);
+          setSessionStarted(false);
+        } finally {
+          stopProgress();
         }
       } catch (error) {
         if (cancelled) return;
@@ -230,6 +283,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
       } finally {
         if (!cancelled) {
           setRecovering(false);
+          setIsLoading(false);
           setIsInitializing(false);
         }
       }
@@ -447,10 +501,19 @@ const CentralChat: React.FC<CentralChatProps> = ({
   // Show landing screen when no session has been started yet
   if (!sessionStarted) {
     const initStepLabel =
-      initProgress < 30 ? '正在连接 AI 助教...' :
-      initProgress < 60 ? '正在加载课程内容...' :
-      initProgress < 90 ? '正在准备对话环境...' :
-      '即将开始...';
+      initMode === 'restoring'
+        ? (
+          initProgress < 35 ? '正在拉取云端会话...' :
+          initProgress < 70 ? '正在恢复历史消息与报告...' :
+          initProgress < 90 ? '正在同步提交代码...' :
+          '即将进入对话...'
+        )
+        : (
+          initProgress < 30 ? '正在连接 AI 助教...' :
+          initProgress < 60 ? '正在加载课程内容...' :
+          initProgress < 90 ? '正在准备对话环境...' :
+          '即将开始...'
+        );
 
     return (
       <div className="flex flex-col h-full bg-white items-center justify-center gap-6 px-8">
