@@ -161,6 +161,48 @@ export async function confirmWorkspaceUpload(params: {
   });
 }
 
+export async function uploadWorkspaceToPresignedUrl(params: {
+  presignedUrl: string;
+  content: string;
+  contentType?: string;
+}): Promise<void> {
+  const url = String(params.presignedUrl || '').trim();
+  if (!url) {
+    throw new Error('Missing upload URL');
+  }
+
+  // Backend returns this sentinel when OSS is disabled.
+  if (url.includes('/dev-no-oss')) {
+    throw new Error('后端未启用对象存储，请联系管理员配置 OSS');
+  }
+
+  if (window.tutorApp) {
+    const response = await window.tutorApp.backendRequest({
+      method: 'PUT',
+      path: url,
+      withAuth: false,
+      headers: {
+        'Content-Type': params.contentType || 'text/plain; charset=utf-8',
+      },
+      body: params.content,
+    });
+    if (!response.ok) {
+      const status = Number(response.status || 0);
+      throw new Error(`OSS upload failed (${status || 'network'})`);
+    }
+    return;
+  }
+
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': params.contentType || 'text/plain; charset=utf-8' },
+    body: params.content,
+  });
+  if (!response.ok) {
+    throw new Error(`OSS upload failed (${response.status})`);
+  }
+}
+
 export async function listWorkspaceSubmittedFiles(): Promise<{
   files: SubmittedWorkspaceFile[];
   quota_used_bytes: number;

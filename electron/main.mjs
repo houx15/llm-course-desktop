@@ -620,7 +620,7 @@ const requestBackend = async (payload = {}) => {
   if (payload.withAuth !== false && auth.accessToken) {
     headers.Authorization = `Bearer ${auth.accessToken}`;
   }
-  if (auth.deviceId) {
+  if (payload.withAuth !== false && auth.deviceId) {
     headers['X-Device-Id'] = auth.deviceId;
   }
 

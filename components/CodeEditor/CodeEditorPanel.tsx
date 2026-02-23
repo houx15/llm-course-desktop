@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CodeWorkspaceFile } from '../../types';
 import { codeWorkspace } from '../../services/codeWorkspace';
-import { getWorkspaceUploadUrl, confirmWorkspaceUpload } from '../../services/backendClient';
+import {
+  getWorkspaceUploadUrl,
+  confirmWorkspaceUpload,
+  uploadWorkspaceToPresignedUrl,
+} from '../../services/backendClient';
 import CodeEditorToolbar, { EditorMode } from './CodeEditorToolbar';
 import OutputPanel, { OutputChunk } from './OutputPanel';
 import NotebookEditor, { buildDefaultNotebook } from './NotebookEditor';
 import WorkspaceFileSidebar from './WorkspaceFileSidebar';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { PanelLeftOpen } from 'lucide-react';
 
 interface CodeInjection {
   id: number;
@@ -89,6 +94,9 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const [monacoLoadDone, setMonacoLoadDone] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitDone, setSubmitDone] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [submitMessage, setSubmitMessage] = useState('');
+  const [isFileSidebarVisible, setIsFileSidebarVisible] = useState(true);
   const fallbackEditorRef = useRef<HTMLTextAreaElement>(null);
   const fallbackHighlightRef = useRef<HTMLDivElement>(null);
 
@@ -100,6 +108,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   // Always holds the latest chapterId so async callbacks can guard stale state updates
   const currentChapterIdRef = useRef(chapterId);
   currentChapterIdRef.current = chapterId;
+  const submitFeedbackTimerRef = useRef<number | null>(null);
 
   // Callback refs: always point to the latest prop without being useEffect deps.
   // This prevents infinite loops when parent passes inline arrow functions.
@@ -310,6 +319,9 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   useEffect(() => {
     return () => {
       flushPendingSave();
+      if (submitFeedbackTimerRef.current) {
+        window.clearTimeout(submitFeedbackTimerRef.current);
+      }
     };
   }, []);
 
@@ -446,6 +458,18 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      refreshFiles().catch(() => {});
+    }, 1000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [visible, chapterId]);
+
   const handleNewFile = async (filename: string) => {
     const isNotebook = filename.toLowerCase().endsWith('.ipynb');
     const defaultContent = isNotebook
@@ -503,13 +527,21 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     const filename = mode === 'notebook' ? activeNotebook : activeFile;
     if (!filename || isSubmitting) return;
     const lower = filename.toLowerCase();
+    if (submitFeedbackTimerRef.current) {
+      window.clearTimeout(submitFeedbackTimerRef.current);
+      submitFeedbackTimerRef.current = null;
+    }
     if (!(lower.endsWith('.py') || lower.endsWith('.ipynb'))) {
-      console.warn('[CodeEditor] Submit skipped: only .py and .ipynb are supported');
+      setSubmitError('仅支持提交 .py 或 .ipynb 文件。');
+      setSubmitMessage('');
+      setSubmitDone(false);
       return;
     }
 
     setIsSubmitting(true);
     setSubmitDone(false);
+    setSubmitError('');
+    setSubmitMessage('正在提交到云端...');
     try {
       // Read current file content from disk
       let content: string;
@@ -519,8 +551,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         content = code;
       }
 
-      const blob = new Blob([content], { type: 'text/plain' });
-      const fileSizeBytes = blob.size;
+      const fileSizeBytes = new TextEncoder().encode(content).length;
       const backendChapterId = chapterId.includes('/') ? chapterId.split('/').pop() || chapterId : chapterId;
 
       const { presigned_url, oss_key } = await getWorkspaceUploadUrl({
@@ -529,19 +560,27 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         fileSizeBytes,
       });
 
-      // Direct PUT to OSS
-      const ossResponse = await fetch(presigned_url, { method: 'PUT', body: blob });
-      if (!ossResponse.ok) {
-        throw new Error(`OSS upload failed: ${ossResponse.status}`);
-      }
+      // Direct PUT to OSS (via main-process network path in Electron to avoid renderer CORS issues)
+      await uploadWorkspaceToPresignedUrl({
+        presignedUrl: presigned_url,
+        content,
+      });
 
       // Confirm with backend
       await confirmWorkspaceUpload({ ossKey: oss_key, filename, chapterId: backendChapterId, fileSizeBytes });
 
       setSubmitDone(true);
-      window.setTimeout(() => setSubmitDone(false), 2000);
+      setSubmitMessage('提交成功，已同步到云端。');
+      submitFeedbackTimerRef.current = window.setTimeout(() => {
+        setSubmitDone(false);
+        setSubmitMessage('');
+        submitFeedbackTimerRef.current = null;
+      }, 2200);
     } catch (err: unknown) {
       console.warn('[CodeEditor] File submit failed:', err);
+      setSubmitDone(false);
+      setSubmitMessage('');
+      setSubmitError(err instanceof Error ? `提交失败：${err.message}` : '提交失败，请稍后重试。');
     } finally {
       setIsSubmitting(false);
     }
@@ -568,19 +607,43 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         isSubmitting={isSubmitting}
         submitDone={submitDone}
       />
+      {(submitMessage || submitError) && (
+        <div
+          className={`px-3 py-1.5 text-xs border-b ${
+            submitError
+              ? 'bg-red-50 text-red-700 border-red-200'
+              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          }`}
+        >
+          {submitError || submitMessage}
+        </div>
+      )}
 
       {/* ── Body: sidebar + editor side-by-side ── */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        <WorkspaceFileSidebar
-          files={files}
-          activeFile={sidebarActiveFile}
-          chapterDir={chapterDir}
-          onSelectFile={handleSidebarSelectFile}
-          onNewFile={handleNewFile}
-          onDeleteFile={handleDeleteFile}
-          onOpenFolder={chapterDir ? handleOpenFolder : undefined}
-          onRefresh={refreshFiles}
-        />
+        {isFileSidebarVisible ? (
+          <WorkspaceFileSidebar
+            files={files}
+            activeFile={sidebarActiveFile}
+            chapterDir={chapterDir}
+            onSelectFile={handleSidebarSelectFile}
+            onNewFile={handleNewFile}
+            onDeleteFile={handleDeleteFile}
+            onOpenFolder={chapterDir ? handleOpenFolder : undefined}
+            onRefresh={refreshFiles}
+            onHide={() => setIsFileSidebarVisible(false)}
+          />
+        ) : (
+          <div className="h-full border-r border-gray-200 bg-gray-50 w-8 flex items-start justify-center pt-2">
+            <button
+              onClick={() => setIsFileSidebarVisible(true)}
+              className="p-1 rounded text-gray-500 hover:text-gray-900 hover:bg-gray-200"
+              title="显示文件列表"
+            >
+              <PanelLeftOpen size={14} />
+            </button>
+          </div>
+        )}
 
         {/* ── Right: editor area ── */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">

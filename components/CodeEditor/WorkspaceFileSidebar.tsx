@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, FilePlus, FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, FilePlus, FolderOpen, RefreshCw, Trash2, PanelLeftClose } from 'lucide-react';
 import { CodeWorkspaceFile } from '../../types';
 
 // ─── File icon ────────────────────────────────────────────────────────────────
@@ -55,6 +55,7 @@ interface Props {
   onDeleteFile?: (filename: string) => Promise<void>;
   onOpenFolder?: () => void;
   onRefresh?: () => void;
+  onHide?: () => void;
 }
 
 const WorkspaceFileSidebar: React.FC<Props> = ({
@@ -66,6 +67,7 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
   onDeleteFile,
   onOpenFolder,
   onRefresh,
+  onHide,
 }) => {
   const [expanded, setExpanded] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -134,6 +136,15 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
           >
             <FilePlus size={12} />
           </button>
+          {onHide && (
+            <button
+              onClick={onHide}
+              title="隐藏文件列表"
+              className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200"
+            >
+              <PanelLeftClose size={12} />
+            </button>
+          )}
         </div>
       </div>
 
