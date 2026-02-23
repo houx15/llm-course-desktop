@@ -554,7 +554,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       const fileSizeBytes = new TextEncoder().encode(content).length;
       const backendChapterId = chapterId.includes('/') ? chapterId.split('/').pop() || chapterId : chapterId;
 
-      const { presigned_url, oss_key } = await getWorkspaceUploadUrl({
+      const { presigned_url, oss_key, required_headers } = await getWorkspaceUploadUrl({
         chapterId: backendChapterId,
         filename,
         fileSizeBytes,
