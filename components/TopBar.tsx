@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Settings, LogOut, PanelLeftClose, PanelLeftOpen, ArrowLeft } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
 import KnoweiaLogo from './KnoweiaLogo';
 
@@ -22,16 +22,28 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick, onToggleSi
     <>
       <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0 z-40 relative shadow-sm w-full drag-region">
           {/* Branding */}
-          <div 
-            className={`flex items-center gap-3 ${onLogoClick ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
-            onClick={onLogoClick}
-          >
+          <div className="flex items-center gap-3">
+              {onLogoClick && (
+                <button
+                  onClick={onLogoClick}
+                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="返回主页"
+                  aria-label="返回主页"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+              )}
+              <div
+                className={`flex items-center gap-3 ${onLogoClick ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                onClick={onLogoClick}
+              >
               <div className="rounded-xl shadow-lg shadow-blue-200/60 ring-1 ring-blue-100 overflow-hidden">
                   <KnoweiaLogo className="w-9 h-9 block" />
               </div>
               <div>
                   <h1 className="font-bold text-lg text-gray-900 tracking-tight leading-none">Knoweia</h1>
                   <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest mt-0.5">AI Learning Platform</p>
+              </div>
               </div>
           </div>
 
