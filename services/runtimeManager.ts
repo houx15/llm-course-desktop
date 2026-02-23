@@ -37,7 +37,9 @@ export type NormalizedStreamEvent =
 const mapProvider = (providerId: string) => {
   switch (providerId) {
     case 'gpt':
-      return { llmProvider: 'openai' as const, defaultModel: 'gpt-4o' };
+      return { llmProvider: 'openai' as const, defaultModel: 'gpt-5-mini' };
+    case 'claude':
+      return { llmProvider: 'anthropic' as const, defaultModel: 'claude-haiku-4-5-20251001' };
     case 'deepseek':
       return { llmProvider: 'custom' as const, defaultModel: 'deepseek-chat', baseUrl: 'https://api.deepseek.com' };
     case 'qwen':
@@ -49,7 +51,9 @@ const mapProvider = (providerId: string) => {
     case 'glm':
       return { llmProvider: 'custom' as const, defaultModel: 'glm-4', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' };
     case 'kimi':
-      return { llmProvider: 'custom' as const, defaultModel: 'moonshot-v1-8k', baseUrl: 'https://api.moonshot.cn/v1' };
+      return { llmProvider: 'custom' as const, defaultModel: 'kimi-k2-0905-preview', baseUrl: 'https://api.moonshot.cn/v1' };
+    case 'minimax':
+      return { llmProvider: 'custom' as const, defaultModel: 'MiniMax-M2.1-highspeed', baseUrl: 'https://api.minimaxi.com/v1' };
     case 'gemini':
     default:
       // Gemini exposes an OpenAI-compatible endpoint; 'custom' provider uses that.
