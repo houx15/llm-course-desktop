@@ -53,7 +53,7 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick, onToggleSi
               >
                   <div className="flex flex-col items-end hidden sm:block">
                       <span className="text-sm font-bold text-gray-800 leading-none">{user.name}</span>
-                      <span className="text-[10px] text-gray-500 font-medium leading-none mt-1 group-hover:text-blue-600 transition-colors">设置</span>
+                      {/* <span className="text-[10px] text-gray-500 font-medium leading-none mt-1 group-hover:text-blue-600 transition-colors">设置</span> */}
                   </div>
                   <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 group-hover:bg-black group-hover:text-white transition-all shadow-sm">
                       <Settings size={18} />
