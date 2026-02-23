@@ -2380,7 +2380,7 @@ ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
   return response.json();
 });
 
-ipcMain.handle('session:restore', async (_event, { sessionId, turns, memoryJson, reportMd }) => {
+ipcMain.handle('session:restore', async (_event, { sessionId, chapterId, turns, memoryJson, reportMd }) => {
   const settings = await loadSettings();
   const sessionsRoot = await getSessionsRoot(settings);
   const sessionsDir = path.join(sessionsRoot, sessionId);
@@ -2396,6 +2396,22 @@ ipcMain.handle('session:restore', async (_event, { sessionId, turns, memoryJson,
     await fs.writeFile(path.join(turnsDir, `${idx}_companion.txt`), turn.companion_response, 'utf8');
     await fs.writeFile(path.join(turnsDir, `${idx}_turn_outcome.json`), JSON.stringify(turn.turn_outcome ?? {}), 'utf8');
   }
+
+  // Write minimal session_state.json so sidecar's reattach endpoint can call load_state()
+  const turnIndex = turns.length > 0 ? Math.max(...turns.map((t) => t.turn_index)) + 1 : 0;
+  const sessionState = {
+    session_id: sessionId,
+    chapter_id: chapterId || '',
+    turn_index: turnIndex,
+    subtask_status: {},
+    end_suggested: false,
+    end_confirmed: false,
+    constraints: { max_input_length: 10000, batch_error_log_every_n_turns: 5, max_attempts_before_unlock: 3 },
+    current_instruction_version: 1,
+    attempts_since_last_progress: 0,
+    last_progress_turn: 0,
+  };
+  await fs.writeFile(path.join(sessionsDir, 'session_state.json'), JSON.stringify(sessionState), 'utf8');
 
   if (memoryJson && Object.keys(memoryJson).length > 0) {
     await fs.writeFile(path.join(sessionsDir, 'memo_digest.json'), JSON.stringify(memoryJson), 'utf8');

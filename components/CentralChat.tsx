@@ -108,6 +108,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
               // Write recovered data to sidecar sessions directory
               await window.tutorApp!.restoreSessionState({
                 sessionId: recoveredSessionId,
+                chapterId,
                 turns: recoveredTurns,
                 memoryJson: state.memory ?? {},
                 reportMd: state.report_md ?? '',

@@ -281,6 +281,7 @@ declare global {
       reattachRuntimeSession: (payload: { sessionId: string; chapterId: string }) => Promise<{ status: string }>;
       restoreSessionState: (payload: {
         sessionId: string;
+        chapterId: string;
         turns: Array<{
           turn_index: number;
           user_message: string;
