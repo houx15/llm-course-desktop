@@ -450,15 +450,36 @@ const App: React.FC = () => {
       .catch((err) => console.warn('Progress/analytics sync failed:', err));
   };
 
-  const handleStartPhase = () => {
+  const pickResumeChapter = (phase: Phase): Chapter | null => {
+    if (!phase.chapters || phase.chapters.length === 0) {
+      return null;
+    }
+
+    // Prefer the latest chapter the learner has already touched.
+    for (let i = phase.chapters.length - 1; i >= 0; i -= 1) {
+      const chapter = phase.chapters[i];
+      if (chapter.status === 'IN_PROGRESS' || chapter.status === 'COMPLETED') {
+        if (chapter.status !== 'LOCKED') {
+          return chapter;
+        }
+      }
+    }
+
+    // Otherwise, start from the first unlocked chapter.
+    return phase.chapters.find((chapter) => chapter.status !== 'LOCKED') || null;
+  };
+
+  const handleStartPhase = async () => {
     if (!currentPhase) {
       return;
     }
-    // Find first unlocked chapter in current phase
-    const firstUnlocked = currentPhase.chapters.find(c => c.status !== 'LOCKED');
-    if (firstUnlocked) {
-      setCurrentChapter(firstUnlocked);
+
+    const targetChapter = pickResumeChapter(currentPhase);
+    if (!targetChapter) {
+      return;
     }
+
+    await handleSelectChapter(targetChapter, currentPhase);
   };
 
   const openCodeEditor = () => {
