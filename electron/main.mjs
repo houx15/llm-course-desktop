@@ -635,7 +635,11 @@ const requestBackend = async (payload = {}) => {
 
     // For presigned uploads and other raw requests, never force JSON encoding.
     if (rawBodyRequested) {
-      body = payload.body;
+      if (typeof payload.body === 'string') {
+        body = Buffer.from(payload.body, 'utf-8');
+      } else {
+        body = payload.body;
+      }
     } else if (!hasExplicitContentType) {
       headers['Content-Type'] = 'application/json';
       body = JSON.stringify(payload.body);
