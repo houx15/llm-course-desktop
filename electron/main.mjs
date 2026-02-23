@@ -2007,7 +2007,12 @@ const buildSidecarSessionContext = async (params) => {
   const chapterCode = chapterId;
   const chapterScopeId = chapterScopeIdInput || chapterCode;
 
-  const chapterEntry = indexData?.chapter?.[chapterScopeId] || null;
+  // Look up by exact key, then by courseId/chapterCode composite, then by suffix match
+  const chapterEntry =
+    indexData?.chapter?.[chapterScopeId] ||
+    (courseId ? indexData?.chapter?.[`${courseId}/${chapterScopeId}`] : null) ||
+    Object.entries(indexData?.chapter || {}).find(([k]) => k.endsWith(`/${chapterScopeId}`))?.[1] ||
+    null;
   const appAgentsEntry = indexData?.app_agents?.core || null;
   const expertsSharedEntry = indexData?.experts_shared?.shared || null;
 
@@ -2358,7 +2363,7 @@ ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
   }
 
   const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
-  const desktopContext = await buildSidecarSessionContext(chapterId);
+  const desktopContext = await buildSidecarSessionContext({ chapterId });
 
   const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/reattach`, {
     method: 'POST',

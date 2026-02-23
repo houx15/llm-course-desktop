@@ -6,13 +6,15 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
+const API_KEY_HELP_URL = 'https://puk4mtafgs.feishu.cn/wiki/Ej7cwWaqsiFaSHkbBgKcr0ldnkg';
+
 const PROVIDERS = [
-  { id: 'gemini',   name: 'Google Gemini',         defaultModel: 'gemini-2.0-flash',  llmFormat: 'custom',    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', helpUrl: 'https://aistudio.google.com/app/apikey' },
-  { id: 'gpt',      name: 'OpenAI GPT',             defaultModel: 'gpt-4o',            llmFormat: 'openai',    baseUrl: '',                                                           helpUrl: 'https://platform.openai.com/api-keys' },
-  { id: 'deepseek', name: 'DeepSeek',               defaultModel: 'deepseek-chat',     llmFormat: 'custom',    baseUrl: 'https://api.deepseek.com',                                   helpUrl: 'https://platform.deepseek.com/api_keys' },
-  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',         llmFormat: 'custom',    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',         helpUrl: 'https://help.aliyun.com/zh/dashscope/developer-reference/activate-dashscope-and-create-an-api-key' },
-  { id: 'glm',      name: 'Zhipu GLM (智谱)',       defaultModel: 'glm-4',             llmFormat: 'custom',    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',                       helpUrl: 'https://open.bigmodel.cn/usercenter/apikeys' },
-  { id: 'kimi',     name: 'Moonshot Kimi',          defaultModel: 'moonshot-v1-8k',    llmFormat: 'custom',    baseUrl: 'https://api.moonshot.cn/v1',                                 helpUrl: 'https://platform.moonshot.cn/console/api-keys' },
+  { id: 'gemini',   name: 'Google Gemini',         defaultModel: 'gemini-2.0-flash',  llmFormat: 'custom',    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', helpUrl: API_KEY_HELP_URL },
+  { id: 'gpt',      name: 'OpenAI GPT',             defaultModel: 'gpt-4o',            llmFormat: 'openai',    baseUrl: '',                                                           helpUrl: API_KEY_HELP_URL },
+  { id: 'deepseek', name: 'DeepSeek',               defaultModel: 'deepseek-chat',     llmFormat: 'custom',    baseUrl: 'https://api.deepseek.com',                                   helpUrl: API_KEY_HELP_URL },
+  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',         llmFormat: 'custom',    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',         helpUrl: API_KEY_HELP_URL },
+  { id: 'glm',      name: 'Zhipu GLM (智谱)',       defaultModel: 'glm-4',             llmFormat: 'custom',    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',                       helpUrl: API_KEY_HELP_URL },
+  { id: 'kimi',     name: 'Moonshot Kimi',          defaultModel: 'moonshot-v1-8k',    llmFormat: 'custom',    baseUrl: 'https://api.moonshot.cn/v1',                                 helpUrl: API_KEY_HELP_URL },
 ];
 
 type ProviderConfig = {
