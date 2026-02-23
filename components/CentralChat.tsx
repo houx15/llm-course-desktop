@@ -65,39 +65,48 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
     const init = async () => {
       try {
-        // Check for an existing session for this chapter
+        let sessionRestored = false;
+
+        // Step 1: Try to reattach a local sidecar session (same device, same install)
         const sessions = await runtimeManager.listSessions();
         const existing = sessions.find(
           (s) => s.chapter_id === chapterId || s.chapter_id === chapter.id
         );
 
         if (existing) {
-          await runtimeManager.reattachSession(existing.session_id, chapter.id);
-          const [turns, report] = await Promise.all([
-            runtimeManager.getSessionHistory(existing.session_id),
-            runtimeManager.getDynamicReport(existing.session_id).catch(() => ''),
-          ]);
-          if (cancelled) return;
-          setSessionId(existing.session_id);
-          // Restore chat history
-          if (turns.length === 0) {
-            setMessages([{ role: 'model', text: chapter.initialMessage }]);
-          } else {
-            const msgs: Message[] = turns.flatMap((t) => {
-              const result: Message[] = [];
-              if (t.user_message) result.push({ role: 'user', text: t.user_message });
-              if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
-              return result;
-            });
-            setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+          try {
+            await runtimeManager.reattachSession(existing.session_id, chapter.id);
+            const [turns, report] = await Promise.all([
+              runtimeManager.getSessionHistory(existing.session_id),
+              runtimeManager.getDynamicReport(existing.session_id).catch(() => ''),
+            ]);
+            if (cancelled) return;
+            setSessionId(existing.session_id);
+            if (turns.length === 0) {
+              setMessages([{ role: 'model', text: chapter.initialMessage }]);
+            } else {
+              const msgs: Message[] = turns.flatMap((t) => {
+                const result: Message[] = [];
+                if (t.user_message) result.push({ role: 'user', text: t.user_message });
+                if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
+                return result;
+              });
+              setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+            }
+            if (report) {
+              onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
+            }
+            setSessionStarted(true);
+            sessionRestored = true;
+          } catch (reattachErr) {
+            // Local reattach failed (sidecar not ready, files missing, etc.)
+            // Fall through to backend recovery below.
+            console.warn('[CentralChat] Local reattach failed, falling back to backend recovery:', reattachErr);
           }
-          // Restore dynamic report in the roadmap panel
-          if (report) {
-            onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
-          }
-          setSessionStarted(true);
-        } else {
-          // No existing local session — check backend for cross-device recovery
+        }
+
+        // Step 2: If no local session or local reattach failed, try backend cross-device recovery
+        if (!sessionRestored) {
           try {
             const state = await fetchSessionState(chapterId, courseId);
             if (state.has_data && state.session_id && state.turns && state.turns.length > 0) {
@@ -142,14 +151,13 @@ const CentralChat: React.FC<CentralChatProps> = ({
             // has_data: false → fall through to landing screen
           } catch (err) {
             if (cancelled) return;
-            console.warn('[CentralChat] Recovery check failed, starting fresh:', err);
+            console.warn('[CentralChat] Backend recovery check failed, starting fresh:', err);
             setRecovering(false);
           }
         }
         // No session found anywhere → show landing screen, wait for user to click "开启本章学习"
       } catch (error) {
         if (cancelled) return;
-        // On error checking sessions, also show landing screen
         console.warn('Session check failed:', error);
       } finally {
         if (!cancelled) setIsInitializing(false);
