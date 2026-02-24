@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Key, HardDrive, Database, Eye, EyeOff, ExternalLink, ChevronDown, Check, Info, RefreshCw, FolderOpen } from 'lucide-react';
+import { X, Save, Key, HardDrive, Database, Eye, EyeOff, ExternalLink, ChevronDown, Check, Info, RefreshCw, FolderOpen, LogOut } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onLogout?: () => void;
 }
 
 const API_KEY_HELP_URL = 'https://puk4mtafgs.feishu.cn/wiki/Ej7cwWaqsiFaSHkbBgKcr0ldnkg';
@@ -25,8 +26,8 @@ type ProviderConfig = {
   rememberKey: boolean;
 };
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'storage' | 'api' | 'about'>('storage');
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onLogout }) => {
+  const [activeTab, setActiveTab] = useState<'storage' | 'api' | 'about' | 'account'>('storage');
   const [storageRoot, setStorageRoot] = useState('');
   const [rememberLogin, setRememberLogin] = useState(true);
   const [devLocalSidecar, setDevLocalSidecar] = useState(false);
@@ -213,34 +214,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         </div>
 
         <div className="flex flex-1 min-h-0">
-          <div className="w-48 bg-gray-50 border-r border-gray-200 p-3 space-y-1">
-            <button
-              onClick={() => setActiveTab('storage')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                activeTab === 'storage' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <HardDrive size={16} />
-              存储
-            </button>
-            <button
-              onClick={() => setActiveTab('api')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                activeTab === 'api' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Key size={16} />
-              模型设置
-            </button>
-            <button
-              onClick={() => setActiveTab('about')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                activeTab === 'about' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Info size={16} />
-              关于
-            </button>
+          <div className="w-48 bg-gray-50 border-r border-gray-200 p-3 flex flex-col">
+            <div className="space-y-1">
+              <button
+                onClick={() => setActiveTab('storage')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
+                  activeTab === 'storage' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <HardDrive size={16} />
+                存储
+              </button>
+              <button
+                onClick={() => setActiveTab('api')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
+                  activeTab === 'api' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Key size={16} />
+                模型设置
+              </button>
+              <button
+                onClick={() => setActiveTab('about')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
+                  activeTab === 'about' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Info size={16} />
+                关于
+              </button>
+            </div>
+            {onLogout && (
+              <div className="mt-auto pt-3 border-t border-gray-200">
+                <button
+                  onClick={() => setActiveTab('account')}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
+                    activeTab === 'account' ? 'bg-white text-red-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-500 hover:bg-gray-100 hover:text-red-600'
+                  }`}
+                >
+                  <LogOut size={16} />
+                  退出登录
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 p-6 overflow-y-auto bg-white">
@@ -474,6 +490,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     <p className="text-[10px] text-gray-400">发生错误时，用文本编辑器打开此文件查看详细日志。</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'account' && onLogout && (
+              <div className="space-y-6">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <LogOut size={16} className="text-red-500" /> 退出登录
+                </h3>
+                <p className="text-sm text-gray-600">
+                  退出当前账号后，需要重新登录才能继续学习。本地的学习数据不会被删除。
+                </p>
+                <button
+                  onClick={() => { onClose(); onLogout(); }}
+                  className="px-5 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  确认退出登录
+                </button>
               </div>
             )}
 
