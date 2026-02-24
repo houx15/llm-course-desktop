@@ -222,6 +222,11 @@ const OutputLine: React.FC<{ text: string }> = ({ text }) => {
 
 // ─── Code cell with syntax highlighting ──────────────────────────────────────
 
+const CELL_FONT = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+const CELL_FONT_SIZE = '13px';
+const CELL_LINE_HEIGHT = '20px';
+const CELL_PADDING = '10px 12px';
+
 const CellCodeEditor: React.FC<{
   code: string;
   isRunning: boolean;
@@ -241,6 +246,55 @@ const CellCodeEditor: React.FC<{
   };
 
   const lineCount = Math.max(2, code.split('\n').length);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const el = e.currentTarget;
+      const s = el.selectionStart;
+      const end = el.selectionEnd;
+      onChange(`${el.value.slice(0, s)}    ${el.value.slice(end)}`);
+      window.setTimeout(() => { el.selectionStart = el.selectionEnd = s + 4; }, 0);
+      return;
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (isRunning) onStop();
+      else onRun();
+      return;
+    }
+
+    // Auto-indent on Enter
+    if (e.key === 'Enter') {
+      const el = e.currentTarget;
+      const pos = el.selectionStart;
+      const val = el.value;
+
+      // Find the current line
+      const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
+      const currentLine = val.slice(lineStart, pos);
+
+      // Get leading whitespace of current line
+      const leadingMatch = currentLine.match(/^(\s*)/);
+      let indent = leadingMatch ? leadingMatch[1] : '';
+
+      // Extra indent if line ends with ':'
+      if (currentLine.trimEnd().endsWith(':')) {
+        indent += '    ';
+      }
+
+      if (indent) {
+        e.preventDefault();
+        const before = val.slice(0, pos);
+        const after = val.slice(el.selectionEnd);
+        const inserted = `\n${indent}`;
+        onChange(before + inserted + after);
+        const newPos = pos + inserted.length;
+        window.setTimeout(() => { el.selectionStart = el.selectionEnd = newPos; }, 0);
+      }
+    }
+  };
 
   return (
     <div
@@ -265,9 +319,19 @@ const CellCodeEditor: React.FC<{
             borderRadius: 0,
             background: 'transparent',
             minHeight: '100%',
-            padding: '10px 12px',
-            fontSize: '13px',
-            lineHeight: '1.5rem',
+            padding: CELL_PADDING,
+            fontFamily: CELL_FONT,
+            fontSize: CELL_FONT_SIZE,
+            lineHeight: CELL_LINE_HEIGHT,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+          }}
+          codeTagProps={{
+            style: {
+              fontFamily: CELL_FONT,
+              fontSize: CELL_FONT_SIZE,
+              lineHeight: CELL_LINE_HEIGHT,
+            },
           }}
         >
           {code || ' '}
@@ -281,23 +345,16 @@ const CellCodeEditor: React.FC<{
         onChange={(e) => onChange(e.target.value)}
         onScroll={syncScroll}
         rows={lineCount}
-        className="relative z-10 w-full px-3 py-2.5 text-[13px] leading-6 font-mono bg-transparent resize-none outline-none border-0 text-transparent caret-black selection:bg-blue-200/70"
-        spellCheck={false}
-        onKeyDown={(e) => {
-          if (e.key === 'Tab') {
-            e.preventDefault();
-            const el = e.currentTarget;
-            const s = el.selectionStart;
-            const end = el.selectionEnd;
-            onChange(`${el.value.slice(0, s)}    ${el.value.slice(end)}`);
-            window.setTimeout(() => { el.selectionStart = el.selectionEnd = s + 4; }, 0);
-          }
-          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-            e.preventDefault();
-            if (isRunning) onStop();
-            else onRun();
-          }
+        style={{
+          fontFamily: CELL_FONT,
+          fontSize: CELL_FONT_SIZE,
+          lineHeight: CELL_LINE_HEIGHT,
+          padding: CELL_PADDING,
+          tabSize: 4,
         }}
+        className="relative z-10 w-full bg-transparent resize-none outline-none border-0 text-transparent caret-black selection:bg-blue-200/70"
+        spellCheck={false}
+        onKeyDown={handleKeyDown}
       />
     </div>
   );
