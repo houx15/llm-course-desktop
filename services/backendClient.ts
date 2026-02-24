@@ -250,3 +250,44 @@ export async function listWorkspaceSubmittedFiles(): Promise<{
 }> {
   return backendClient.get('/v1/storage/workspace/files');
 }
+
+export interface ChapterCloudFile {
+  filename: string;
+  oss_key: string;
+  file_size_bytes: number;
+  updated_at: string;
+  download_url?: string | null;
+}
+
+export async function listChapterCloudFiles(chapterId: string): Promise<{
+  files: ChapterCloudFile[];
+}> {
+  return backendClient.get(`/v1/storage/workspace/chapter-files/${encodeURIComponent(chapterId)}`);
+}
+
+export async function deleteChapterCloudFile(chapterId: string, filename: string): Promise<{ deleted: boolean }> {
+  return backendClient.request<{ deleted: boolean }>(
+    'DELETE',
+    `/v1/storage/workspace/chapter-files/${encodeURIComponent(chapterId)}/${encodeURIComponent(filename)}`
+  );
+}
+
+export async function downloadFromUrl(url: string): Promise<string> {
+  if (!url) throw new Error('Missing download URL');
+
+  if (window.tutorApp) {
+    const response = await window.tutorApp.backendRequest({
+      method: 'GET',
+      path: url,
+      withAuth: false,
+    });
+    if (!response.ok) {
+      throw new Error(`Download failed (${response.status})`);
+    }
+    return typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+  }
+
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
+  return resp.text();
+}

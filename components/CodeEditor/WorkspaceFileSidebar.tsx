@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, FilePlus, FolderOpen, RefreshCw, Trash2, PanelLeftClose } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle, ChevronDown, ChevronRight, FilePlus, FolderOpen, RefreshCw, Trash2, PanelLeftClose } from 'lucide-react';
 import { CodeWorkspaceFile } from '../../types';
 
 // ─── File icon ────────────────────────────────────────────────────────────────
@@ -44,6 +44,49 @@ const FileIcon: React.FC<{ name: string; size?: number }> = ({ name, size = 13 }
   );
 };
 
+// ─── Delete confirmation modal ────────────────────────────────────────────────
+
+const DeleteConfirmModal: React.FC<{
+  filename: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ filename, onConfirm, onCancel }) => {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-full bg-red-50">
+            <AlertTriangle size={18} className="text-red-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">删除文件</h3>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              将会在本地和云端删除文件 <span className="font-mono font-semibold text-gray-800">{filename}</span>，无法恢复。
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-3 py-1.5 text-xs rounded-lg bg-red-600 text-white hover:bg-red-700"
+          >
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -72,15 +115,29 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
   const [expanded, setExpanded] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
-  const [hoveredFile, setHoveredFile] = useState<string | null>(null);
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filename: string } | null>(null);
   const newNameRef = useRef<HTMLInputElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (creating) {
       setTimeout(() => newNameRef.current?.focus(), 50);
     }
   }, [creating]);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [contextMenu]);
 
   const handleStartCreate = () => {
     setNewName('');
@@ -103,139 +160,174 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
     if (e.key === 'Escape') { setCreating(false); setNewName(''); }
   };
 
-  const handleDeleteClick = async (e: React.MouseEvent, filename: string) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, filename: string) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (!onDeleteFile) return;
-    if (!window.confirm(`Delete "${filename}"?`)) return;
+    setContextMenu({ x: e.clientX, y: e.clientY, filename });
+  }, []);
+
+  const handleDeleteFromContextMenu = () => {
+    if (!contextMenu) return;
+    setDeleteTarget(contextMenu.filename);
+    setContextMenu(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !onDeleteFile) return;
+    const filename = deleteTarget;
+    setDeleteTarget(null);
     setDeletingFile(filename);
-    try { await onDeleteFile(filename); }
-    finally { setDeletingFile(null); }
+    try {
+      await onDeleteFile(filename);
+    } finally {
+      setDeletingFile(null);
+    }
   };
 
   const shortDir = chapterDir ? chapterDir.split('/').slice(-2).join('/') : '';
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 border-r border-gray-200 select-none" style={{ width: 168 }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-b border-gray-200">
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Files</span>
-        <div className="flex items-center gap-0.5">
-          {onRefresh && (
+    <>
+      <div className="flex flex-col h-full bg-gray-50 border-r border-gray-200 select-none" style={{ width: 168 }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-2 py-1.5 border-b border-gray-200">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Files</span>
+          <div className="flex items-center gap-0.5">
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                title="Refresh"
+                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200"
+              >
+                <RefreshCw size={11} />
+              </button>
+            )}
             <button
-              onClick={onRefresh}
-              title="Refresh"
+              onClick={handleStartCreate}
+              title="New file"
               className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200"
             >
-              <RefreshCw size={11} />
+              <FilePlus size={12} />
             </button>
-          )}
-          <button
-            onClick={handleStartCreate}
-            title="New file"
-            className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200"
-          >
-            <FilePlus size={12} />
-          </button>
-          {onHide && (
-            <button
-              onClick={onHide}
-              title="隐藏文件列表"
-              className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200"
-            >
-              <PanelLeftClose size={12} />
-            </button>
-          )}
+            {onHide && (
+              <button
+                onClick={onHide}
+                title="隐藏文件列表"
+                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200"
+              >
+                <PanelLeftClose size={12} />
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Workspace folder row */}
+        {chapterDir && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-1 px-2 py-1 w-full text-left hover:bg-gray-100 group"
+          >
+            {expanded ? <ChevronDown size={11} className="text-gray-400 shrink-0" /> : <ChevronRight size={11} className="text-gray-400 shrink-0" />}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-yellow-500 shrink-0">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            <span className="text-[11px] text-gray-600 truncate font-medium" title={chapterDir}>
+              {shortDir || 'workspace'}
+            </span>
+            {onOpenFolder && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenFolder(); }}
+                title="Open in Finder"
+                className="ml-auto p-0.5 rounded text-gray-300 hover:text-gray-600 opacity-0 group-hover:opacity-100"
+              >
+                <FolderOpen size={11} />
+              </button>
+            )}
+          </button>
+        )}
+
+        {/* File list */}
+        {expanded && (
+          <div className="flex-1 overflow-y-auto">
+            {/* New file input */}
+            {creating && (
+              <div className="flex items-center gap-1 pl-5 pr-2 py-0.5">
+                <FileIcon name={newName || 'file.py'} size={12} />
+                <input
+                  ref={newNameRef}
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={handleNewKeyDown}
+                  onBlur={handleConfirmCreate}
+                  placeholder="filename.py"
+                  className="flex-1 text-[11px] bg-white border border-blue-400 rounded px-1 py-0.5 outline-none min-w-0"
+                />
+              </div>
+            )}
+
+            {files.map((file) => {
+              const isActive = file.name === activeFile;
+              const isDeleting = file.name === deletingFile;
+              return (
+                <button
+                  key={file.name}
+                  onClick={() => onSelectFile(file.name)}
+                  onContextMenu={(e) => handleContextMenu(e, file.name)}
+                  disabled={isDeleting}
+                  className={`flex items-center gap-1.5 w-full text-left pl-5 pr-1 py-0.5 group/file ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  } disabled:opacity-40`}
+                >
+                  <FileIcon name={file.name} size={12} />
+                  <span className="flex-1 text-[11px] truncate" title={file.name}>
+                    {file.name}
+                  </span>
+                </button>
+              );
+            })}
+
+            {files.length === 0 && !creating && (
+              <div className="px-3 py-2 text-[10px] text-gray-400 italic">
+                No files yet.{' '}
+                <button onClick={handleStartCreate} className="underline text-blue-400 hover:text-blue-600">
+                  Create one
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Workspace folder row */}
-      {chapterDir && (
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-1 px-2 py-1 w-full text-left hover:bg-gray-100 group"
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-[150] bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[120px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {expanded ? <ChevronDown size={11} className="text-gray-400 shrink-0" /> : <ChevronRight size={11} className="text-gray-400 shrink-0" />}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-yellow-500 shrink-0">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-          </svg>
-          <span className="text-[11px] text-gray-600 truncate font-medium" title={chapterDir}>
-            {shortDir || 'workspace'}
-          </span>
-          {onOpenFolder && (
+          {onDeleteFile && (
             <button
-              onClick={(e) => { e.stopPropagation(); onOpenFolder(); }}
-              title="Open in Finder"
-              className="ml-auto p-0.5 rounded text-gray-300 hover:text-gray-600 opacity-0 group-hover:opacity-100"
+              onClick={handleDeleteFromContextMenu}
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
             >
-              <FolderOpen size={11} />
+              <Trash2 size={12} />
+              删除
             </button>
-          )}
-        </button>
-      )}
-
-      {/* File list */}
-      {expanded && (
-        <div className="flex-1 overflow-y-auto">
-          {/* New file input */}
-          {creating && (
-            <div className="flex items-center gap-1 pl-5 pr-2 py-0.5">
-              <FileIcon name={newName || 'file.py'} size={12} />
-              <input
-                ref={newNameRef}
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={handleNewKeyDown}
-                onBlur={handleConfirmCreate}
-                placeholder="filename.py"
-                className="flex-1 text-[11px] bg-white border border-blue-400 rounded px-1 py-0.5 outline-none min-w-0"
-              />
-            </div>
-          )}
-
-          {files.map((file) => {
-            const isActive = file.name === activeFile;
-            const isDeleting = file.name === deletingFile;
-            return (
-              <button
-                key={file.name}
-                onClick={() => onSelectFile(file.name)}
-                onMouseEnter={() => setHoveredFile(file.name)}
-                onMouseLeave={() => setHoveredFile(null)}
-                disabled={isDeleting}
-                className={`flex items-center gap-1.5 w-full text-left pl-5 pr-1 py-0.5 group/file ${
-                  isActive
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700 hover:bg-gray-100'
-                } disabled:opacity-40`}
-              >
-                <FileIcon name={file.name} size={12} />
-                <span className="flex-1 text-[11px] truncate" title={file.name}>
-                  {file.name}
-                </span>
-                {onDeleteFile && hoveredFile === file.name && !isActive && (
-                  <button
-                    onClick={(e) => handleDeleteClick(e, file.name)}
-                    title="Delete file"
-                    className="p-0.5 rounded text-gray-300 hover:text-red-500 opacity-0 group-hover/file:opacity-100"
-                  >
-                    <Trash2 size={10} />
-                  </button>
-                )}
-              </button>
-            );
-          })}
-
-          {files.length === 0 && !creating && (
-            <div className="px-3 py-2 text-[10px] text-gray-400 italic">
-              No files yet.{' '}
-              <button onClick={handleStartCreate} className="underline text-blue-400 hover:text-blue-600">
-                Create one
-              </button>
-            </div>
           )}
         </div>
       )}
-    </div>
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          filename={deleteTarget}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+    </>
   );
 };
 

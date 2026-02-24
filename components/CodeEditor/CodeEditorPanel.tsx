@@ -5,6 +5,9 @@ import {
   getWorkspaceUploadUrl,
   confirmWorkspaceUpload,
   uploadWorkspaceToPresignedUrl,
+  deleteChapterCloudFile,
+  listChapterCloudFiles,
+  downloadFromUrl,
 } from '../../services/backendClient';
 import CodeEditorToolbar, { EditorMode } from './CodeEditorToolbar';
 import OutputPanel, { OutputChunk } from './OutputPanel';
@@ -89,7 +92,6 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const [isRunning, setIsRunning] = useState(false);
   const [outputChunks, setOutputChunks] = useState<OutputChunk[]>(initialOutputChunks || []);
   const [loadError, setLoadError] = useState('');
-  const [didCopy, setDidCopy] = useState(false);
   const [monacoEditor, setMonacoEditor] = useState<MonacoEditorComponent | null>(null);
   const [monacoLoadDone, setMonacoLoadDone] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -244,7 +246,33 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       loadTokenRef.current += 1;
 
       try {
+        // 1. List local files (also triggers curriculum seeding on first access)
         let listed = await codeWorkspace.listFiles(chapterId);
+
+        // 2. Download cloud-synced files (overwrites local copies with cloud versions)
+        const backendChapterId = chapterId.includes('/') ? chapterId.split('/').pop() || chapterId : chapterId;
+        try {
+          const { files: cloudFiles } = await listChapterCloudFiles(backendChapterId);
+          for (const cf of cloudFiles) {
+            if (cancelled) return;
+            if (!cf.download_url) continue;
+            try {
+              const content = await downloadFromUrl(cf.download_url);
+              await codeWorkspace.writeFile(chapterId, cf.filename, content);
+            } catch {
+              // Best-effort: skip files that fail to download
+            }
+          }
+          // Re-list after cloud sync to pick up any new files
+          if (cloudFiles.length > 0) {
+            listed = await codeWorkspace.listFiles(chapterId);
+          }
+        } catch {
+          // Cloud sync failed (offline, not logged in, etc.) — continue with local files
+        }
+
+        if (cancelled) return;
+
         if (!listed.length) {
           // Default: create a .py script (no kernel started until user explicitly opens a .ipynb)
           const chapterCode = chapterId.includes('/')
@@ -416,21 +444,6 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     setOutputChunks([]);
   };
 
-  const handleCopyOutput = async () => {
-    try {
-      await navigator.clipboard.writeText(outputText);
-      setDidCopy(true);
-      window.setTimeout(() => setDidCopy(false), 1200);
-    } catch {
-      // Ignore clipboard failures.
-    }
-  };
-
-  const handleSendToTutor = () => {
-    if (!outputText.trim()) return;
-    onSendToTutor?.(`Here is my code output:\n\`\`\`\n${outputText}\n\`\`\``);
-  };
-
   const handleSendToChatInput = () => {
     if (!outputText.trim()) return;
     onSendOutputToChatInput?.(`\`\`\`\n${outputText}\n\`\`\``);
@@ -492,6 +505,11 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
 
   const handleDeleteFile = async (filename: string) => {
     await codeWorkspace.deleteFile(chapterId, filename);
+
+    // Also soft-delete on backend (best-effort)
+    const backendChapterId = chapterId.includes('/') ? chapterId.split('/').pop() || chapterId : chapterId;
+    deleteChapterCloudFile(backendChapterId, filename).catch(() => {});
+
     await refreshFiles();
     // If the deleted file was active, pick another
     setFiles((prev) => {
@@ -523,65 +541,87 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     }
   };
 
+  const [submitProgress, setSubmitProgress] = useState('');
+
   const handleSubmit = async () => {
-    const filename = mode === 'notebook' ? activeNotebook : activeFile;
-    if (!filename || isSubmitting) return;
-    const lower = filename.toLowerCase();
+    if (isSubmitting) return;
     if (submitFeedbackTimerRef.current) {
       window.clearTimeout(submitFeedbackTimerRef.current);
       submitFeedbackTimerRef.current = null;
     }
-    if (!(lower.endsWith('.py') || lower.endsWith('.ipynb'))) {
-      setSubmitError('仅支持提交 .py 或 .ipynb 文件。');
-      setSubmitMessage('');
-      setSubmitDone(false);
-      return;
-    }
+
+    // Flush pending save so disk content is up-to-date
+    flushPendingSave();
 
     setIsSubmitting(true);
     setSubmitDone(false);
     setSubmitError('');
-    setSubmitMessage('正在提交到云端...');
-    try {
-      // Read current file content from disk
-      let content: string;
-      try {
-        content = await codeWorkspace.readFile(chapterId, filename);
-      } catch {
-        content = code;
-      }
+    setSubmitMessage('');
+    setSubmitProgress('');
 
-      const fileSizeBytes = new TextEncoder().encode(content).length;
+    try {
       const backendChapterId = chapterId.includes('/') ? chapterId.split('/').pop() || chapterId : chapterId;
 
-      const { presigned_url, oss_key, required_headers } = await getWorkspaceUploadUrl({
-        chapterId: backendChapterId,
-        filename,
-        fileSizeBytes,
+      // List all local files
+      const localFiles = await codeWorkspace.listFiles(chapterId);
+      // Filter to syncable extensions
+      const syncable = localFiles.filter((f) => {
+        const lower = f.name.toLowerCase();
+        return lower.endsWith('.py') || lower.endsWith('.ipynb');
       });
 
-      // Direct PUT to OSS (via main-process network path in Electron to avoid renderer CORS issues)
-      await uploadWorkspaceToPresignedUrl({
-        presignedUrl: presigned_url,
-        content,
-        headers: required_headers || undefined,
-      });
+      if (syncable.length === 0) {
+        setSubmitError('没有可同步的 .py 或 .ipynb 文件。');
+        setIsSubmitting(false);
+        return;
+      }
 
-      // Confirm with backend
-      await confirmWorkspaceUpload({ ossKey: oss_key, filename, chapterId: backendChapterId, fileSizeBytes });
+      let uploaded = 0;
+      let failed = 0;
+      for (const file of syncable) {
+        setSubmitProgress(`${uploaded + 1}/${syncable.length}`);
+        try {
+          const content = await codeWorkspace.readFile(chapterId, file.name);
+          const fileSizeBytes = new TextEncoder().encode(content).length;
 
-      setSubmitDone(true);
-      setSubmitMessage('提交成功，已同步到云端。');
+          const { presigned_url, oss_key, required_headers } = await getWorkspaceUploadUrl({
+            chapterId: backendChapterId,
+            filename: file.name,
+            fileSizeBytes,
+          });
+
+          await uploadWorkspaceToPresignedUrl({
+            presignedUrl: presigned_url,
+            content,
+            headers: required_headers || undefined,
+          });
+
+          await confirmWorkspaceUpload({ ossKey: oss_key, filename: file.name, chapterId: backendChapterId, fileSizeBytes });
+          uploaded++;
+        } catch (err) {
+          console.warn(`[CodeEditor] Sync failed for ${file.name}:`, err);
+          failed++;
+        }
+      }
+
+      setSubmitProgress('');
+      if (failed === 0) {
+        setSubmitDone(true);
+        setSubmitMessage(`已同步 ${uploaded} 个文件到云端。`);
+      } else {
+        setSubmitMessage(`已同步 ${uploaded} 个文件，${failed} 个失败。`);
+      }
       submitFeedbackTimerRef.current = window.setTimeout(() => {
         setSubmitDone(false);
         setSubmitMessage('');
         submitFeedbackTimerRef.current = null;
-      }, 2200);
+      }, 2500);
     } catch (err: unknown) {
-      console.warn('[CodeEditor] File submit failed:', err);
+      console.warn('[CodeEditor] File sync failed:', err);
       setSubmitDone(false);
+      setSubmitProgress('');
       setSubmitMessage('');
-      setSubmitError(err instanceof Error ? `提交失败：${err.message}` : '提交失败，请稍后重试。');
+      setSubmitError(err instanceof Error ? `同步失败：${err.message}` : '同步失败，请稍后重试。');
     } finally {
       setIsSubmitting(false);
     }
@@ -598,15 +638,13 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       <CodeEditorToolbar
         mode={mode}
         isRunning={isRunning}
-        hasOutput={outputChunks.length > 0}
         onRun={handleRun}
         onStop={handleStop}
-        onCopyOutput={handleCopyOutput}
-        onSendToTutor={handleSendToTutor}
         onOpenJupyter={handleOpenJupyter}
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
         submitDone={submitDone}
+        submitProgress={submitProgress ? `同步中 (${submitProgress})` : undefined}
       />
       {(submitMessage || submitError) && (
         <div
@@ -734,7 +772,6 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                   <div className="absolute top-2 left-3 text-xs text-gray-500 bg-white/85 px-2 py-0.5 rounded">Loading editor module...</div>
                 )}
                 {isLoading && <div className="absolute left-3 top-3 text-xs text-gray-500">Loading file...</div>}
-                {didCopy && <div className="absolute top-2 right-2 text-[11px] text-emerald-600">Copied</div>}
               </div>
 
               <div className="h-56 shrink-0">
