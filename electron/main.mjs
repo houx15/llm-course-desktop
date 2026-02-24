@@ -2568,6 +2568,21 @@ ipcMain.handle('session:restore', async (_event, { sessionId, chapterId, turns, 
   };
   await fs.writeFile(path.join(sessionsDir, 'session_state.json'), JSON.stringify(sessionState), 'utf8');
 
+  // Write a default instruction_packet.json so the sidecar's streaming code
+  // can load_instruction_packet() without "File not found" errors.
+  const defaultInstructionPacket = {
+    current_focus: '继续当前任务',
+    guidance_for_ca: '继续引导学习者完成当前任务',
+    must_check: ['检查学习者是否理解当前概念'],
+    nice_check: [],
+    instruction_version: turnIndex > 0 ? turnIndex : 1,
+    lock_until: 'checkpoint_reached',
+    allow_setup_helper_code: false,
+    setup_helper_scope: 'none',
+    task_type: 'core',
+  };
+  await fs.writeFile(path.join(sessionsDir, 'instruction_packet.json'), JSON.stringify(defaultInstructionPacket), 'utf8');
+
   if (memoryJson && Object.keys(memoryJson).length > 0) {
     await fs.writeFile(path.join(sessionsDir, 'memo_digest.json'), JSON.stringify(memoryJson), 'utf8');
   }
