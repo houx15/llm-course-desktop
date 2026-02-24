@@ -10,9 +10,18 @@ import { createHash, randomUUID, createCipheriv, createDecipheriv, randomBytes }
 import net from 'net';
 
 // node-pty is a native module — use createRequire for CJS interop in ESM context.
+// Pre-built spawn-helper binaries may lack execute permission (npm packaging bug).
 const esmRequire = createRequire(import.meta.url);
 let nodePty;
 try {
+  // Fix spawn-helper permission before loading node-pty.
+  // npm strips execute bits from prebuild binaries — restore them.
+  const ptyPkgDir = path.dirname(esmRequire.resolve('node-pty/package.json'));
+  for (const p of ['darwin-arm64', 'darwin-x64']) {
+    fs.chmod(path.join(ptyPkgDir, 'prebuilds', p, 'spawn-helper'), 0o755).catch(() => {});
+  }
+  fs.chmod(path.join(ptyPkgDir, 'build', 'Release', 'spawn-helper'), 0o755).catch(() => {});
+
   nodePty = esmRequire('node-pty');
 } catch (err) {
   console.warn('[main] node-pty not available:', err.message);
@@ -2895,20 +2904,33 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   const cols = Number(payload?.cols) || 80;
   const rows = Number(payload?.rows) || 24;
-  const shellName = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
+
+  // Resolve shell — Electron may not inherit SHELL when launched from Dock
+  let shellName = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
+  if (process.platform !== 'win32' && !(await pathExists(shellName))) {
+    shellName = '/bin/zsh';
+  }
 
   // Build conda activation command
   const condaRoot = getCondaRoot();
   const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
   const condaShExists = await pathExists(condaSh);
 
-  const ptyProcess = nodePty.spawn(shellName, [], {
-    name: 'xterm-256color',
-    cols,
-    rows,
-    cwd: chapterDir,
-    env: { ...process.env, TERM: 'xterm-256color' },
-  });
+  console.log('[pty:spawn]', { shellName, cwd: chapterDir, cols, rows, condaShExists });
+
+  let ptyProcess;
+  try {
+    ptyProcess = nodePty.spawn(shellName, ['-l'], {
+      name: 'xterm-256color',
+      cols,
+      rows,
+      cwd: chapterDir,
+      env: { ...process.env, TERM: 'xterm-256color' },
+    });
+  } catch (spawnErr) {
+    console.error('[pty:spawn] nodePty.spawn failed:', spawnErr);
+    throw new Error(`Terminal spawn failed (shell=${shellName}): ${spawnErr.message}`);
+  }
 
   const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender };
   ptyByChapter.set(chapterSegment, entry);

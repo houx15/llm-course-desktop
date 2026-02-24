@@ -15,6 +15,7 @@
     "dev:renderer": "vite",
     "dev:electron": "VITE_DEV_SERVER_URL=http://localhost:3000 electron ./electron/main.mjs",
     "dev:desktop": "concurrently -k \"npm run dev:renderer\" \"npm run dev:electron\"",
+    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null; chmod +x node_modules/node-pty/build/Release/spawn-helper 2>/dev/null; true",
     "pack:desktop": "npm run build:renderer && npm_config_electron_mirror= electron-builder --dir",
     "build:desktop": "npm run build:renderer && npm_config_electron_mirror= electron-builder"
   },
