@@ -22,17 +22,15 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({ chapterId, visible }) => 
   const offExitRef = useRef<(() => void) | null>(null);
   const spawnedChapterRef = useRef('');
 
-  // Tracks which chapterId has been activated (PTY spawned).
-  // null = not yet activated for current chapter.
-  const [activeChapter, setActiveChapter] = useState<string | null>(null);
+  // Tracks which chapterId has an active PTY.
+  // Immediately set to chapterId so the terminal auto-starts on chapter change.
+  const [activeChapter, setActiveChapter] = useState(chapterId);
   const [error, setError] = useState('');
 
-  // Trigger activation when tab first becomes visible
+  // Auto-activate when chapter changes — kills old PTY, starts new one
   useEffect(() => {
-    if (visible && activeChapter !== chapterId) {
-      setActiveChapter(chapterId);
-    }
-  }, [visible, chapterId, activeChapter]);
+    setActiveChapter(chapterId);
+  }, [chapterId]);
 
   // Create terminal + PTY when activeChapter is set
   useEffect(() => {
