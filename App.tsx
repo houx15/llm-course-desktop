@@ -450,12 +450,16 @@ const App: React.FC = () => {
         lastActiveAt: s.last_active_at,
         turnCount: s.turn_count,
       }));
-      // Auto-select the most recent session (even if 0 turns — it may have local data)
-      if (allSessions.length > 0) {
-        targetSessionId = allSessions[0].sessionId;
-      }
       // Only show sessions with actual conversation in the sidebar
       mappedSessions = allSessions.filter(s => s.turnCount > 0);
+      // Prefer the most recent session with turns (backend has data for it).
+      // Fall back to the most recent overall only if all sessions have 0 turns.
+      const withTurns = allSessions.find(s => s.turnCount > 0);
+      if (withTurns) {
+        targetSessionId = withTurns.sessionId;
+      } else if (allSessions.length > 0) {
+        targetSessionId = allSessions[0].sessionId;
+      }
     } catch (err) {
       console.warn('Failed to fetch chapter sessions:', err);
     }
