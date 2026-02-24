@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { Eye, EyeOff, ExternalLink, ChevronDown } from 'lucide-react';
 
 interface Provider {
   id: string;
@@ -102,36 +102,42 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
         {/* Provider selector */}
         <div className="mb-4">
           <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">AI Provider</label>
-          <select
-            className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-800 bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
-            value={providerId}
-            onChange={(e) => {
-              const pid = e.target.value;
-              setProviderId(pid);
-              const p = PROVIDERS.find((x) => x.id === pid);
-              if (p) { setLlmFormat(p.llmFormat); setLlmBaseUrl(p.baseUrl); setLlmModel(p.defaultModel); }
-              setApiKey(''); setShowKey(false);
-            }}
-          >
-            {PROVIDERS.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              className="w-full appearance-none px-3 py-2 pr-8 border border-gray-200 rounded-lg text-sm font-medium text-gray-800 bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+              value={providerId}
+              onChange={(e) => {
+                const pid = e.target.value;
+                setProviderId(pid);
+                const p = PROVIDERS.find((x) => x.id === pid);
+                if (p) { setLlmFormat(p.llmFormat); setLlmBaseUrl(p.baseUrl); setLlmModel(p.defaultModel); }
+                setApiKey(''); setShowKey(false);
+              }}
+            >
+              {PROVIDERS.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
         </div>
 
         {/* LLM Format + Base URL */}
         <div className="mb-4 grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">接口格式</label>
-            <select
-              className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none"
-              value={llmFormat}
-              onChange={(e) => setLlmFormat(e.target.value)}
-            >
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="custom">Custom (OpenAI-compat)</option>
-            </select>
+            <div className="relative">
+              <select
+                className="w-full appearance-none px-3 py-2 pr-8 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none"
+                value={llmFormat}
+                onChange={(e) => setLlmFormat(e.target.value)}
+              >
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="custom">Custom (OpenAI-compat)</option>
+              </select>
+              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Base URL</label>

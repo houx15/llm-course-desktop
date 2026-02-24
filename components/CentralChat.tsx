@@ -358,32 +358,46 @@ const CentralChat: React.FC<CentralChatProps> = ({
     setIsLoading(true);
     setInitProgress(0);
 
-    // Animate progress to ~88% while waiting for the session to be created.
-    // The interval advances quickly at first, then slows down near the ceiling.
-    const timer = setInterval(() => {
-      setInitProgress((p) => {
-        if (p >= 88) { clearInterval(timer); return p; }
-        const step = p < 40 ? 4 : p < 70 ? 2 : 1;
-        return Math.min(88, p + step);
-      });
-    }, 400);
-
     try {
-      const created = await runtimeManager.createSession({
-        chapterId,
-        courseId,
-        chapterScopeId: chapter.id,
-      });
-      clearInterval(timer);
-      setInitProgress(100);
-      // Brief pause so the user sees 100% before the chat appears.
-      await new Promise((r) => setTimeout(r, 300));
-      setSessionId(created.sessionId);
-      onSessionIdChange?.(created.sessionId);
-      setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
-      setSessionStarted(true);
+      // Check for existing sessions before creating a new one
+      try {
+        const state = await fetchSessionState(chapterId, courseId);
+        if (state.has_data && state.session_id) {
+          const targetSessionId = String(state.session_id);
+          const localSessions = await runtimeManager.listSessions();
+          const localMatch = localSessions.find((s) => s.session_id === targetSessionId);
+          if (localMatch) {
+            await reattachAndLoadSession(targetSessionId, () => false);
+          } else {
+            await restoreFromBackend(targetSessionId, state, () => false);
+          }
+          onSessionIdChange?.(targetSessionId);
+          return;
+        }
+      } catch (err) {
+        console.warn('[CentralChat] handleStartChapter: existing session check failed, will create new:', err);
+      }
+
+      // No existing session — create new
+      const stopProgress = startInitProgress('creating');
+      try {
+        const created = await runtimeManager.createSession({
+          chapterId,
+          courseId,
+          chapterScopeId: chapter.id,
+        });
+        stopProgress();
+        setInitProgress(100);
+        await new Promise((r) => setTimeout(r, 300));
+        setSessionId(created.sessionId);
+        onSessionIdChange?.(created.sessionId);
+        setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
+        setSessionStarted(true);
+      } catch (error) {
+        stopProgress();
+        throw error;
+      }
     } catch (error) {
-      clearInterval(timer);
       setInitProgress(0);
       setSessionId(null);
       setMessages([{ role: 'model', text: `会话初始化失败：${error instanceof Error ? error.message : '未知错误'}` }]);

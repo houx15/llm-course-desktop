@@ -436,6 +436,28 @@ const App: React.FC = () => {
     } catch (err) {
       console.warn('Chapter update check failed:', err);
     }
+
+    // Fetch sessions BEFORE setting chapter state so activeSessionId and
+    // currentChapter are batched in the same React render. Otherwise CentralChat
+    // mounts with a stale requestedSessionId and may create a new session.
+    let mappedSessions: SessionSummary[] = [];
+    let targetSessionId: string | undefined = undefined;
+    try {
+      const { sessions } = await fetchChapterSessions(chapterCode, courseId);
+      mappedSessions = sessions.map(s => ({
+        sessionId: s.session_id,
+        createdAt: s.created_at,
+        lastActiveAt: s.last_active_at,
+        turnCount: s.turn_count,
+      }));
+      if (mappedSessions.length > 0) {
+        targetSessionId = mappedSessions[0].sessionId;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch chapter sessions:', err);
+    }
+
+    // Set all state together — batched in one render
     setCurrentPhase(phase);
     setCurrentChapter(chapter);
     setChapterRuntimeState((prev) => ({
@@ -443,26 +465,8 @@ const App: React.FC = () => {
       [chapter.id]: prev[chapter.id] || { dynamicReport: '', roadmapUpdating: false, memoUpdating: false },
     }));
     setIsCodeEditorOpen(false);
-
-    // Fetch sessions list from backend and set active session
-    try {
-      const { sessions } = await fetchChapterSessions(chapterCode, courseId);
-      const mapped: SessionSummary[] = sessions.map(s => ({
-        sessionId: s.session_id,
-        createdAt: s.created_at,
-        lastActiveAt: s.last_active_at,
-        turnCount: s.turn_count,
-      }));
-      updateChapterModel(chapter.id, ch => ({ ...ch, sessions: mapped }));
-      if (mapped.length > 0) {
-        setActiveSessionId(mapped[0].sessionId);
-      } else {
-        setActiveSessionId(undefined);
-      }
-    } catch (err) {
-      console.warn('Failed to fetch chapter sessions:', err);
-      setActiveSessionId(undefined as any);
-    }
+    updateChapterModel(chapter.id, ch => ({ ...ch, sessions: mappedSessions }));
+    setActiveSessionId(targetSessionId);
 
     syncQueue.enqueueProgress({
       course_id: courseId,
