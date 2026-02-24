@@ -170,10 +170,11 @@ export type RuntimeStartResult = {
   contract_version?: string;
   contract_status?: number;
   failureStage?: RuntimeStartFailureStage;
+  needsRestart?: boolean;
 };
 
 export const runtimeManager = {
-  async ensureSidecarBundle(): Promise<{ ready: boolean; error?: string }> {
+  async ensureSidecarBundle(): Promise<{ ready: boolean; needsRestart?: boolean; error?: string }> {
     if (!window.tutorApp?.ensureSidecarReady) {
       return { ready: true };
     }
@@ -185,7 +186,7 @@ export const runtimeManager = {
       return { started: false, reason: 'tutorApp unavailable', failureStage: 'bootstrap' };
     }
 
-    let sidecar: { ready: boolean; error?: string };
+    let sidecar: { ready: boolean; needsRestart?: boolean; error?: string };
     try {
       sidecar = await this.ensureSidecarBundle();
     } catch (err) {
@@ -201,6 +202,12 @@ export const runtimeManager = {
         reason: sidecar.error || 'Sidecar bundle is not ready',
         failureStage: 'sidecar',
       };
+    }
+
+    // Conda/env was freshly installed — skip startRuntime and signal the caller
+    // to show the restart button. The process env needs refreshing first.
+    if (sidecar.needsRestart) {
+      return { started: false, needsRestart: true, failureStage: 'sidecar' };
     }
 
     let boot: Awaited<ReturnType<typeof loadRuntimeBootstrap>>;

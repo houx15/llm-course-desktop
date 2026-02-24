@@ -1248,7 +1248,7 @@ const fetchRuntimeConfig = async () => {
 const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
   const condaBin = getCondaBin(condaRoot);
   if (await pathExists(condaBin)) {
-    return; // already installed
+    return false; // already installed
   }
 
   // Download installer
@@ -1317,12 +1317,13 @@ const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
   }
 
   sendProgress('installing_conda', { percent: 44, status: '正在安装 Python 环境...' });
+  return true; // freshly installed
 };
 
 const ensureCondaEnv = async (condaRoot, sendProgress) => {
   const envPython = getCondaEnvPython(condaRoot);
   if (await pathExists(envPython)) {
-    return; // env already exists
+    return false; // env already exists
   }
 
   sendProgress('creating_env', { percent: 45, status: '正在创建运行环境...' });
@@ -1335,6 +1336,7 @@ const ensureCondaEnv = async (condaRoot, sendProgress) => {
   ]);
 
   sendProgress('creating_env', { percent: 54, status: '正在创建运行环境...' });
+  return true; // freshly created
 };
 
 const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
@@ -1458,16 +1460,20 @@ ipcMain.handle('sidecar:ensureReady', async () => {
       const runtimeConfig = await fetchRuntimeConfig();
 
       // Stage 1: Miniconda installation (skipped if already present)
-      await ensureCondaInstalled(condaRoot, runtimeConfig, sendProgress);
+      const condaInstalled = await ensureCondaInstalled(condaRoot, runtimeConfig, sendProgress);
 
       // Stage 2: Conda sidecar env (skipped if already present)
-      await ensureCondaEnv(condaRoot, sendProgress);
+      const envCreated = await ensureCondaEnv(condaRoot, sendProgress);
 
       // Stage 3: Sidecar code bundle + pip install (skipped if up to date)
       await ensureSidecarCode(condaRoot, runtimeConfig, sendProgress);
 
+      // A restart is needed when conda or the env was freshly installed,
+      // because the Electron process env (PATH, etc.) must be refreshed.
+      const needsRestart = !!(condaInstalled || envCreated);
+
       sendProgress('done', { percent: 100, status: '准备就绪' });
-      return { ready: true };
+      return { ready: true, needsRestart };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       sendProgress('error', { percent: 0, status: message });

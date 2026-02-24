@@ -290,9 +290,15 @@ const App: React.FC = () => {
       setShowSidecarDownload(true);
       try {
         const runtimeResult = await runtimeManager.start();
+        if (runtimeResult.needsRestart) {
+          // Conda/env was freshly installed — keep overlay visible for the restart button.
+          // Set the ref immediately so no other code path hides the overlay.
+          sidecarNeedsRestartRef.current = true;
+          return;
+        }
         if (!runtimeResult.started) {
           setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
-          if (runtimeResult.failureStage !== 'sidecar') {
+          if (runtimeResult.failureStage !== 'sidecar' && !sidecarNeedsRestartRef.current) {
             setShowSidecarDownload(false);
           }
           // Keep overlay visible for sidecar setup/download failures so retry remains accessible
@@ -305,7 +311,9 @@ const App: React.FC = () => {
       } catch (err) {
         console.warn('Runtime start failed:', err);
         setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
-        setShowSidecarDownload(false);
+        if (!sidecarNeedsRestartRef.current) {
+          setShowSidecarDownload(false);
+        }
       }
 
       try {
@@ -591,9 +599,13 @@ const App: React.FC = () => {
   const handleSidecarRetry = async () => {
     try {
       const runtimeResult = await runtimeManager.start();
+      if (runtimeResult.needsRestart) {
+        sidecarNeedsRestartRef.current = true;
+        return;
+      }
       if (!runtimeResult.started) {
         setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
-        if (runtimeResult.failureStage !== 'sidecar') {
+        if (runtimeResult.failureStage !== 'sidecar' && !sidecarNeedsRestartRef.current) {
           setShowSidecarDownload(false);
         }
         // Keep overlay visible for sidecar setup/download failures so retry remains accessible
@@ -605,7 +617,9 @@ const App: React.FC = () => {
     } catch (err) {
       console.warn('Sidecar retry failed:', err);
       setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
-      setShowSidecarDownload(false);
+      if (!sidecarNeedsRestartRef.current) {
+        setShowSidecarDownload(false);
+      }
     }
   };
 

@@ -246,6 +246,7 @@ declare global {
       ensureSidecarReady: () => Promise<{
         ready: boolean;
         alreadyInstalled?: boolean;
+        needsRestart?: boolean;
         error?: string;
       }>;
       onSidecarDownloadProgress: (callback: (payload: {
