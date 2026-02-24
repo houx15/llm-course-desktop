@@ -306,6 +306,7 @@ declare global {
         }>;
         memoryJson: Record<string, unknown>;
         reportMd: string;
+        agentState?: Record<string, unknown>;
       }) => Promise<{ ok: boolean }>;
       startJupyterServer: (payload: { chapterId: string }) => Promise<{ url: string; token: string; port: number }>;
       stopJupyterServer: (payload: { chapterId: string }) => Promise<{ stopped: boolean }>;

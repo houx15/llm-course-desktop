@@ -164,6 +164,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
       }>;
       memory?: Record<string, unknown>;
       report_md?: string;
+      agent_state?: Record<string, unknown> | null;
     },
     cancelled: () => boolean,
   ) => {
@@ -178,6 +179,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
         turns: recoveredTurns,
         memoryJson: state.memory ?? {},
         reportMd: state.report_md ?? '',
+        agentState: state.agent_state ?? undefined,
       });
       setInitProgress((p) => Math.max(p, 55));
       await restoreWorkspaceFilesFromBackend().catch((error) => {

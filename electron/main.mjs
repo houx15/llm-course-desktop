@@ -2534,7 +2534,7 @@ ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
   return response.json();
 });
 
-ipcMain.handle('session:restore', async (_event, { sessionId, chapterId, turns, memoryJson, reportMd }) => {
+ipcMain.handle('session:restore', async (_event, { sessionId, chapterId, turns, memoryJson, reportMd, agentState }) => {
   const settings = await loadSettings();
   const sessionsRoot = await getSessionsRoot(settings);
   const sessionsDir = path.join(sessionsRoot, sessionId);
@@ -2552,9 +2552,9 @@ ipcMain.handle('session:restore', async (_event, { sessionId, chapterId, turns, 
     await fs.writeFile(path.join(turnsDir, `${idx}_turn_outcome.json`), JSON.stringify(turn.turn_outcome ?? {}), 'utf8');
   }
 
-  // Write minimal session_state.json so sidecar's reattach endpoint can call load_state()
+  // Write session_state.json — use backend agent_state if available, otherwise create defaults
   const turnIndex = turns.length > 0 ? Math.max(...turns.map((t) => t.turn_index)) + 1 : 0;
-  const sessionState = {
+  const sessionState = agentState?.session_state || {
     session_id: sessionId,
     chapter_id: chapterId || '',
     turn_index: turnIndex,
@@ -2568,9 +2568,8 @@ ipcMain.handle('session:restore', async (_event, { sessionId, chapterId, turns, 
   };
   await fs.writeFile(path.join(sessionsDir, 'session_state.json'), JSON.stringify(sessionState), 'utf8');
 
-  // Write a default instruction_packet.json so the sidecar's streaming code
-  // can load_instruction_packet() without "File not found" errors.
-  const defaultInstructionPacket = {
+  // Write instruction_packet.json — use backend agent_state if available, otherwise create defaults
+  const instructionPacket = agentState?.instruction_packet || {
     current_focus: '继续当前任务',
     guidance_for_ca: '继续引导学习者完成当前任务',
     must_check: ['检查学习者是否理解当前概念'],
@@ -2581,7 +2580,12 @@ ipcMain.handle('session:restore', async (_event, { sessionId, chapterId, turns, 
     setup_helper_scope: 'none',
     task_type: 'core',
   };
-  await fs.writeFile(path.join(sessionsDir, 'instruction_packet.json'), JSON.stringify(defaultInstructionPacket), 'utf8');
+  await fs.writeFile(path.join(sessionsDir, 'instruction_packet.json'), JSON.stringify(instructionPacket), 'utf8');
+
+  // Write student_error_summary if available from backend
+  if (agentState?.student_error_summary) {
+    await fs.writeFile(path.join(sessionsDir, 'student_error_summary.json'), agentState.student_error_summary, 'utf8');
+  }
 
   if (memoryJson && Object.keys(memoryJson).length > 0) {
     await fs.writeFile(path.join(sessionsDir, 'memo_digest.json'), JSON.stringify(memoryJson), 'utf8');

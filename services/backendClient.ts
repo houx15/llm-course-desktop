@@ -116,6 +116,7 @@ export interface SessionStateResult {
   }>;
   memory?: Record<string, unknown>;
   report_md?: string;
+  agent_state?: Record<string, unknown> | null;
 }
 
 export interface SubmittedWorkspaceFile {
