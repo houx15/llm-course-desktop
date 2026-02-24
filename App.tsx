@@ -444,15 +444,18 @@ const App: React.FC = () => {
     let targetSessionId: string | undefined = undefined;
     try {
       const { sessions } = await fetchChapterSessions(chapterCode, courseId);
-      mappedSessions = sessions.map(s => ({
+      const allSessions: SessionSummary[] = sessions.map(s => ({
         sessionId: s.session_id,
         createdAt: s.created_at,
         lastActiveAt: s.last_active_at,
         turnCount: s.turn_count,
       }));
-      if (mappedSessions.length > 0) {
-        targetSessionId = mappedSessions[0].sessionId;
+      // Auto-select the most recent session (even if 0 turns — it may have local data)
+      if (allSessions.length > 0) {
+        targetSessionId = allSessions[0].sessionId;
       }
+      // Only show sessions with actual conversation in the sidebar
+      mappedSessions = allSessions.filter(s => s.turnCount > 0);
     } catch (err) {
       console.warn('Failed to fetch chapter sessions:', err);
     }
