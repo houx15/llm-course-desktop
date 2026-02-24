@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Phase, Chapter } from '../types';
 import { ChevronDown, ChevronRight, Lock, CheckCircle2, List, Plus } from 'lucide-react';
 
@@ -36,6 +36,18 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set(phases.map(p => p.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
 
+  // Auto-expand the session list when navigating to a chapter
+  useEffect(() => {
+    if (currentChapterId) {
+      setExpandedChapters(prev => {
+        if (prev.has(currentChapterId)) return prev;
+        const next = new Set(prev);
+        next.add(currentChapterId);
+        return next;
+      });
+    }
+  }, [currentChapterId]);
+
   const toggleExpand = (phaseId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const newExpanded = new Set(expandedPhases);
@@ -47,7 +59,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     setExpandedPhases(newExpanded);
   };
 
-  const toggleChapterExpand = (chapterId: string) => {
+  const toggleChapterExpand = (chapterId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     const newExpanded = new Set(expandedChapters);
     if (newExpanded.has(chapterId)) {
       newExpanded.delete(chapterId);
@@ -114,21 +127,27 @@ const Sidebar: React.FC<SidebarProps> = ({
                       const isChapterActive = currentChapterId === chapter.id;
                       const isChapterLocked = chapter.status === 'LOCKED';
                       const sessions = chapter.sessions || [];
-                      const hasMultipleSessions = sessions.length > 1;
+                      const hasSessions = sessions.length > 0;
                       const isChapterExpanded = expandedChapters.has(chapter.id);
 
                       return (
                         <div key={chapter.id}>
-                          {/* Chapter row */}
-                          <div className="flex items-center group">
+                          {/* Chapter row — single white-background container */}
+                          <div
+                            className={`group flex items-center border-l-2 transition-all ${
+                              isChapterActive
+                                ? 'bg-white border-orange-500 shadow-sm'
+                                : 'border-transparent hover:bg-gray-100'
+                            } ${isChapterLocked ? 'opacity-50' : ''}`}
+                          >
                             <button
                               disabled={isChapterLocked}
                               onClick={() => onSelectChapter(chapter, phase)}
-                              className={`flex-1 text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-all border-l-2 ${
+                              className={`flex-1 min-w-0 text-left px-4 py-2.5 text-sm flex items-center gap-3 ${
                                 isChapterActive
-                                  ? 'bg-white border-orange-500 text-gray-900 font-medium shadow-sm'
-                                  : 'border-transparent text-gray-600 hover:bg-gray-100'
-                              } ${isChapterLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                                  ? 'text-gray-900 font-medium'
+                                  : 'text-gray-600'
+                              } ${isChapterLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                             >
                               <div className="shrink-0 w-4 flex justify-center">
                                  {renderStatusIcon(chapter.status, isChapterActive)}
@@ -137,9 +156,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </button>
 
                             {/* Session count badge + expand toggle */}
-                            {hasMultipleSessions && (
+                            {hasSessions && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); toggleChapterExpand(chapter.id); }}
+                                onClick={(e) => toggleChapterExpand(chapter.id, e)}
                                 className="shrink-0 px-1.5 py-1 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5"
                                 title={`${sessions.length} 次会话`}
                               >
@@ -148,11 +167,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                               </button>
                             )}
 
-                            {/* New session button */}
+                            {/* New session button — always visible when active, hover otherwise */}
                             {!isChapterLocked && chapter.status !== 'NOT_STARTED' && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); onCreateNewSession(chapter, phase); }}
-                                className="shrink-0 w-6 h-6 mr-1 opacity-0 group-hover:opacity-100 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all"
+                                className={`shrink-0 w-6 h-6 mr-1 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all ${
+                                  isChapterActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                                }`}
                                 title="新建会话"
                               >
                                 <Plus size={12} />
@@ -161,13 +182,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                           </div>
 
                           {/* Session sub-list */}
-                          {isChapterExpanded && hasMultipleSessions && (
+                          {isChapterExpanded && hasSessions && (
                             <div className="ml-7 border-l border-gray-200">
-                              {sessions.map((session, idx) => (
+                              {sessions.map((session) => (
                                 <button
                                   key={session.sessionId}
                                   onClick={() => onSelectSession(session.sessionId, chapter, phase)}
-                                  className={`w-full text-left pl-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+                                  className={`w-full text-left pl-3 pr-2 py-1.5 text-xs flex items-center gap-2 transition-colors ${
                                     currentSessionId === session.sessionId
                                       ? 'text-blue-600 font-medium bg-blue-50/50'
                                       : 'text-gray-500 hover:bg-gray-100'
@@ -176,11 +197,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                     currentSessionId === session.sessionId ? 'bg-blue-500' : 'bg-gray-300'
                                   }`} />
-                                  <span>会话 {sessions.length - idx}</span>
+                                  <span className="truncate">{formatShortDate(session.createdAt)}</span>
                                   {session.turnCount > 0 && (
-                                    <span className="text-[10px] text-gray-400">{session.turnCount}轮</span>
+                                    <span className="shrink-0 text-[10px] text-gray-400">{session.turnCount}轮</span>
                                   )}
-                                  <span className="text-gray-400 ml-auto text-[10px]">{formatShortDate(session.createdAt)}</span>
                                 </button>
                               ))}
                             </div>
