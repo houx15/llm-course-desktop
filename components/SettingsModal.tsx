@@ -37,6 +37,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [llmBaseUrl, setLlmBaseUrl] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [storageWarnings, setStorageWarnings] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
 
   // About tab state
@@ -114,6 +115,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const result = await window.tutorApp.chooseStorageRoot();
     if (!result.canceled && result.path) {
       setStorageRoot(result.path);
+      setStorageWarnings(result.warnings || []);
     }
   };
 
@@ -265,6 +267,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     </button>
                   </div>
                   <p className="text-[10px] text-gray-400">本地 bundles/session/workspace 的根目录。</p>
+                  {storageWarnings.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {storageWarnings.map((w, i) => (
+                        <p key={i} className="text-xs text-amber-600 leading-snug">{w}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <label className="flex items-center gap-2 text-sm text-gray-600">

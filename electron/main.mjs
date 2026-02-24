@@ -1045,6 +1045,38 @@ ipcMain.handle('settings:set', async (_event, patch) => {
   return saveSettings(patch || {});
 });
 
+// Validate a candidate storage path and return warnings (non-blocking) or
+// errors (blocking) so the user can make an informed decision.
+const validateStoragePath = async (candidatePath) => {
+  const warnings = [];
+
+  // 1. Spaces — may break some Python tooling (pip, subprocess quoting)
+  if (/\s/.test(candidatePath)) {
+    warnings.push('路径含有空格，可能导致部分 Python 工具出错。建议选择不含空格的路径。');
+  }
+
+  // 2. Non-ASCII characters — some CLI tools mishandle them
+  if (/[^\x20-\x7E/\\:]/.test(candidatePath)) {
+    warnings.push('路径含有中文或特殊字符，可能导致兼容性问题。建议使用纯英文路径。');
+  }
+
+  // 3. Path length (Windows 260-char limit; leave room for nested files)
+  if (process.platform === 'win32' && candidatePath.length > 60) {
+    warnings.push('路径较长，Windows 下嵌套文件可能超出 260 字符限制。建议选择更短的路径。');
+  }
+
+  // 4. Writability — actually try to write a temp file
+  try {
+    const testFile = path.join(candidatePath, `.knoweia_write_test_${Date.now()}`);
+    await fs.writeFile(testFile, 'test', 'utf-8');
+    await fs.unlink(testFile);
+  } catch {
+    warnings.push('该路径无写入权限，请选择其他路径或检查权限设置。');
+  }
+
+  return warnings;
+};
+
 ipcMain.handle('settings:chooseStorageRoot', async () => {
   const targetWindow = mainWindow || BrowserWindow.getFocusedWindow() || undefined;
   const result = await dialog.showOpenDialog(targetWindow, {
@@ -1054,8 +1086,9 @@ ipcMain.handle('settings:chooseStorageRoot', async () => {
     return { canceled: true };
   }
   const selectedPath = result.filePaths[0];
+  const warnings = await validateStoragePath(selectedPath);
   const next = await saveSettings({ storageRoot: selectedPath });
-  return { canceled: false, path: selectedPath, settings: next };
+  return { canceled: false, path: selectedPath, settings: next, warnings };
 });
 
 ipcMain.handle('auth:get', async () => {

@@ -145,7 +145,7 @@ declare global {
         llmBaseUrl: string;
         devLocalSidecar: boolean;
       }>) => Promise<any>;
-      chooseStorageRoot: () => Promise<{ canceled: boolean; path?: string; settings?: any }>;
+      chooseStorageRoot: () => Promise<{ canceled: boolean; path?: string; settings?: any; warnings?: string[] }>;
       getAuth: () => Promise<{
         deviceId: string;
         accessToken: string;

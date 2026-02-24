@@ -37,6 +37,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
   const [storageRoot, setStorageRoot] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [storageWarnings, setStorageWarnings] = useState<string[]>([]);
 
   // Load current storageRoot default on mount
   useEffect(() => {
@@ -53,6 +54,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
     const result = await window.tutorApp.chooseStorageRoot();
     if (!result.canceled && result.path) {
       setStorageRoot(result.path);
+      setStorageWarnings(result.warnings || []);
     }
   };
 
@@ -208,6 +210,13 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
             </button>
           </div>
           <p className="mt-1 text-[10px] text-gray-400">Where course bundles and workspace files are stored.</p>
+          {storageWarnings.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {storageWarnings.map((w, i) => (
+                <p key={i} className="text-xs text-amber-600 leading-snug">{w}</p>
+              ))}
+            </div>
+          )}
         </div>
 
         {error && (
