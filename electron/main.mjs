@@ -4,9 +4,19 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import tar from 'tar';
 import { spawn } from 'child_process';
+import { createRequire } from 'module';
 import os from 'os';
 import { createHash, randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import net from 'net';
+
+// node-pty is a native module — use createRequire for CJS interop in ESM context.
+const esmRequire = createRequire(import.meta.url);
+let nodePty;
+try {
+  nodePty = esmRequire('node-pty');
+} catch (err) {
+  console.warn('[main] node-pty not available:', err.message);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2862,6 +2872,92 @@ ipcMain.handle('code:openJupyter', async (_event, payload) => {
   });
   child.unref();
   return { started: true };
+});
+
+// ── Integrated terminal (PTY per chapter) ──────────────────────────────────────
+const ptyByChapter = new Map();
+
+ipcMain.handle('pty:spawn', async (event, payload) => {
+  if (!nodePty) throw new Error('node-pty is not available');
+
+  const rawChapterId = String(payload?.chapterId || '').trim();
+  if (!rawChapterId) throw new Error('Missing chapterId');
+
+  const { chapterSegment, chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
+  await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
+
+  // Kill existing PTY for this chapter
+  const existing = ptyByChapter.get(chapterSegment);
+  if (existing) {
+    try { existing.pty.kill(); } catch {}
+    ptyByChapter.delete(chapterSegment);
+  }
+
+  const cols = Number(payload?.cols) || 80;
+  const rows = Number(payload?.rows) || 24;
+  const shellName = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
+
+  // Build conda activation command
+  const condaRoot = getCondaRoot();
+  const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
+  const condaShExists = await pathExists(condaSh);
+
+  const ptyProcess = nodePty.spawn(shellName, [], {
+    name: 'xterm-256color',
+    cols,
+    rows,
+    cwd: chapterDir,
+    env: { ...process.env, TERM: 'xterm-256color' },
+  });
+
+  const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender };
+  ptyByChapter.set(chapterSegment, entry);
+
+  ptyProcess.onData((data) => {
+    try { entry.sender.send('pty:data', { chapterId: rawChapterId, data }); } catch {}
+  });
+
+  ptyProcess.onExit(({ exitCode, signal }) => {
+    ptyByChapter.delete(chapterSegment);
+    try { entry.sender.send('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
+  });
+
+  // Auto-activate conda env if available
+  if (condaShExists) {
+    ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
+  }
+
+  return { spawned: true, chapterId: rawChapterId, pid: ptyProcess.pid };
+});
+
+ipcMain.handle('pty:write', async (_event, payload) => {
+  const chapterId = String(payload?.chapterId || '').trim();
+  const data = String(payload?.data || '');
+  const chapterSegment = sanitizeSegment(chapterId);
+  const entry = ptyByChapter.get(chapterSegment);
+  if (entry) entry.pty.write(data);
+  return { ok: !!entry };
+});
+
+ipcMain.handle('pty:resize', async (_event, payload) => {
+  const chapterId = String(payload?.chapterId || '').trim();
+  const cols = Number(payload?.cols) || 80;
+  const rows = Number(payload?.rows) || 24;
+  const chapterSegment = sanitizeSegment(chapterId);
+  const entry = ptyByChapter.get(chapterSegment);
+  if (entry) entry.pty.resize(cols, rows);
+  return { ok: !!entry };
+});
+
+ipcMain.handle('pty:kill', async (_event, payload) => {
+  const chapterId = String(payload?.chapterId || '').trim();
+  const chapterSegment = sanitizeSegment(chapterId);
+  const entry = ptyByChapter.get(chapterSegment);
+  if (entry) {
+    try { entry.pty.kill(); } catch {}
+    ptyByChapter.delete(chapterSegment);
+  }
+  return { killed: !!entry };
 });
 
 // Jupyter in-app kernel server (for NotebookEditor with persistent kernel / cross-cell vars)

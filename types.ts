@@ -329,6 +329,12 @@ declare global {
       killCodeExecution: (payload: { chapterId: string }) => Promise<{ killed: boolean; chapterId: string }>;
       onCodeOutput: (callback: (payload: CodeExecutionOutputEvent) => void) => () => void;
       onCodeExit: (callback: (payload: CodeExecutionExitEvent) => void) => () => void;
+      spawnTerminal: (payload: { chapterId: string; cols?: number; rows?: number }) => Promise<{ spawned: boolean; chapterId: string; pid?: number }>;
+      writeTerminal: (payload: { chapterId: string; data: string }) => Promise<{ ok: boolean }>;
+      resizeTerminal: (payload: { chapterId: string; cols: number; rows: number }) => Promise<{ ok: boolean }>;
+      killTerminal: (payload: { chapterId: string }) => Promise<{ killed: boolean }>;
+      onTerminalData: (callback: (payload: { chapterId: string; data: string }) => void) => () => void;
+      onTerminalExit: (callback: (payload: { chapterId: string; exitCode: number; signal?: number }) => void) => () => void;
       getRuntimeLogs: () => Promise<{ stderr: string; logFile?: string }>;
       onRuntimeLog: (callback: (payload: { stream: 'stderr'; text: string }) => void) => () => void;
     };

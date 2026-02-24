@@ -36,13 +36,23 @@
     "mac": {
       "icon": "assets/icon.icns",
       "target": [
-        { "target": "dmg", "arch": ["universal"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
       ]
     },
     "win": {
       "icon": "assets/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "linux": {
@@ -51,16 +61,19 @@
   },
   "dependencies": {
     "@google/genai": "latest",
-    "tar": "^6.2.1",
     "@monaco-editor/react": "^4.7.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "lucide-react": "0.303.0",
     "monaco-editor": "^0.55.1",
+    "node-pty": "^1.1.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-markdown": "9.0.1",
     "react-syntax-highlighter": "^16.1.0",
     "rehype-raw": "7.0.0",
-    "remark-gfm": "4.0.0"
+    "remark-gfm": "4.0.0",
+    "tar": "^6.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

@@ -11,11 +11,14 @@ import {
 } from '../../services/backendClient';
 import CodeEditorToolbar, { EditorMode } from './CodeEditorToolbar';
 import OutputPanel, { OutputChunk } from './OutputPanel';
+import TerminalPanel from './TerminalPanel';
 import NotebookEditor, { buildDefaultNotebook } from './NotebookEditor';
 import WorkspaceFileSidebar from './WorkspaceFileSidebar';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { PanelLeftOpen } from 'lucide-react';
+import { PanelLeftOpen, TerminalSquare } from 'lucide-react';
+
+type BottomTab = 'output' | 'terminal';
 
 interface CodeInjection {
   id: number;
@@ -97,6 +100,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const [submitError, setSubmitError] = useState('');
   const [submitMessage, setSubmitMessage] = useState('');
   const [isFileSidebarVisible, setIsFileSidebarVisible] = useState(true);
+  const [bottomTab, setBottomTab] = useState<BottomTab>('output');
   const fallbackEditorRef = useRef<HTMLTextAreaElement>(null);
   const fallbackHighlightRef = useRef<HTMLDivElement>(null);
 
@@ -419,9 +423,11 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
 
   const handleRun = async () => {
     if (!activeFile) return;
+    setBottomTab('output');
+    setOutputChunks([]);
     try {
       await codeWorkspace.writeFile(chapterId, activeFile, code);
-      appendOutput('stdout', `\n$ python ${activeFile}\n`);
+      appendOutput('stdout', `$ python ${activeFile}\n`);
       setIsRunning(true);
       await codeWorkspace.execute(chapterId, code, { filename: activeFile, timeoutMs: 60_000 });
     } catch (error) {
@@ -442,9 +448,8 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     setOutputChunks([]);
   };
 
-  const handleSendToChatInput = () => {
-    if (!outputText.trim()) return;
-    onSendOutputToChatInput?.(`\`\`\`\n${outputText}\n\`\`\``);
+  const handleSendToChatInput = (message: string) => {
+    onSendOutputToChatInput?.(message);
   };
 
   const handleOpenFolder = () => {
@@ -772,8 +777,46 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                 {isLoading && <div className="absolute left-3 top-3 text-xs text-gray-500">Loading file...</div>}
               </div>
 
-              <div className="h-56 shrink-0">
-                <OutputPanel chunks={outputChunks} onClear={handleClearOutput} onSendToChatInput={handleSendToChatInput} />
+              {/* ── Bottom panel: OUTPUT / Terminal tabs ── */}
+              <div className="h-56 shrink-0 flex flex-col border-t border-gray-200">
+                {/* Tab bar */}
+                <div className="flex items-center bg-[#1a1b1e] border-b border-white/10 px-1 shrink-0">
+                  <button
+                    onClick={() => setBottomTab('output')}
+                    className={`px-3 py-1 text-[11px] font-medium border-b-2 transition-colors ${
+                      bottomTab === 'output'
+                        ? 'text-white border-blue-400'
+                        : 'text-gray-500 border-transparent hover:text-gray-300'
+                    }`}
+                  >
+                    OUTPUT
+                  </button>
+                  <button
+                    onClick={() => setBottomTab('terminal')}
+                    className={`px-3 py-1 text-[11px] font-medium border-b-2 transition-colors inline-flex items-center gap-1 ${
+                      bottomTab === 'terminal'
+                        ? 'text-white border-blue-400'
+                        : 'text-gray-500 border-transparent hover:text-gray-300'
+                    }`}
+                  >
+                    <TerminalSquare size={11} />
+                    终端
+                  </button>
+                </div>
+                {/* Tab content — both mounted, inactive hidden to preserve state */}
+                <div className="flex-1 min-h-0 relative">
+                  <div className={`absolute inset-0 ${bottomTab === 'output' ? '' : 'invisible'}`}>
+                    <OutputPanel
+                      chunks={outputChunks}
+                      code={code}
+                      onClear={handleClearOutput}
+                      onSendToChatInput={handleSendToChatInput}
+                    />
+                  </div>
+                  <div className={`absolute inset-0 ${bottomTab === 'terminal' ? '' : 'invisible'}`}>
+                    <TerminalPanel chapterId={chapterId} visible={bottomTab === 'terminal'} />
+                  </div>
+                </div>
               </div>
             </>
           )}
