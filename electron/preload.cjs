@@ -73,4 +73,19 @@ contextBridge.exposeInMainWorld('tutorApp', {
     ipcRenderer.on('code:exit', listener);
     return () => ipcRenderer.removeListener('code:exit', listener);
   },
+
+  spawnTerminal: (payload) => ipcRenderer.invoke('pty:spawn', payload),
+  writeTerminal: (payload) => ipcRenderer.invoke('pty:write', payload),
+  resizeTerminal: (payload) => ipcRenderer.invoke('pty:resize', payload),
+  killTerminal: (payload) => ipcRenderer.invoke('pty:kill', payload),
+  onTerminalData: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('pty:data', listener);
+    return () => ipcRenderer.removeListener('pty:data', listener);
+  },
+  onTerminalExit: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('pty:exit', listener);
+    return () => ipcRenderer.removeListener('pty:exit', listener);
+  },
 });
