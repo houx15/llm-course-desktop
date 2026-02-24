@@ -23,7 +23,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ chapterId, selectedContext, onCle
   useEffect(() => {
     let cancelled = false;
     runtimeManager
-      .createSession(chapterId)
+      .createSession({ chapterId })
       .then((created) => {
         if (!cancelled) {
           setSessionId(created.sessionId);

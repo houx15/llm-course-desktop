@@ -556,9 +556,7 @@ const App: React.FC = () => {
     for (let i = phase.chapters.length - 1; i >= 0; i -= 1) {
       const chapter = phase.chapters[i];
       if (chapter.status === 'IN_PROGRESS' || chapter.status === 'COMPLETED') {
-        if (chapter.status !== 'LOCKED') {
-          return chapter;
-        }
+        return chapter;
       }
     }
 
