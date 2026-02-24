@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import tar from 'tar';
 import { spawn } from 'child_process';
 import os from 'os';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import net from 'net';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -264,29 +264,69 @@ const migrateLegacyTutorAppData = async () => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Secure storage: in-memory cache + fallback encryption
+// ---------------------------------------------------------------------------
+// Cache decrypted secure store contents in memory so the macOS Keychain is
+// accessed at most once per file per app launch.  This avoids repeated system
+// permission dialogs when the user clicked "Allow" instead of "Always Allow".
+const _secureStoreCache = new Map();
+
+// Fallback AES-256-CBC encryption keyed to this machine.  Used when safeStorage
+// is unavailable or the user denies the Keychain prompt.  Not as secure as the
+// OS keychain but far better than plaintext and keeps the app functional.
+const _fallbackKey = (() => {
+  const material = `${os.hostname()}|${os.homedir()}|${process.arch}|knoweia-desktop`;
+  return createHash('sha256').update(material).digest(); // 32 bytes
+})();
+
+const fallbackEncrypt = (plain) => {
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-cbc', _fallbackKey, iv);
+  const encrypted = Buffer.concat([cipher.update(plain, 'utf-8'), cipher.final()]);
+  return { fallback: true, iv: iv.toString('base64'), data: encrypted.toString('base64') };
+};
+
+const fallbackDecrypt = (record) => {
+  try {
+    const iv = Buffer.from(record.iv, 'base64');
+    const data = Buffer.from(record.data, 'base64');
+    const decipher = createDecipheriv('aes-256-cbc', _fallbackKey, iv);
+    return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf-8');
+  } catch {
+    return null;
+  }
+};
+
 const encryptString = (plain) => {
   if (safeStorage.isEncryptionAvailable()) {
-    const encrypted = safeStorage.encryptString(plain);
-    return { encrypted: true, data: encrypted.toString('base64') };
+    try {
+      const encrypted = safeStorage.encryptString(plain);
+      return { encrypted: true, data: encrypted.toString('base64') };
+    } catch {
+      // safeStorage threw (permission denied) — fall through to fallback
+    }
   }
-  return {
-    encrypted: false,
-    data: Buffer.from(plain, 'utf-8').toString('base64'),
-  };
+  return fallbackEncrypt(plain);
 };
 
 const decryptString = (record) => {
   if (!record || typeof record.data !== 'string') {
     return null;
   }
+  // Fallback-encrypted record (AES-256-CBC with machine-derived key)
+  if (record.fallback) {
+    return fallbackDecrypt(record);
+  }
+  // safeStorage-encrypted record (OS keychain)
   if (record.encrypted) {
     try {
-      const decrypted = safeStorage.decryptString(Buffer.from(record.data, 'base64'));
-      return decrypted;
+      return safeStorage.decryptString(Buffer.from(record.data, 'base64'));
     } catch {
       return null;
     }
   }
+  // Legacy: unencrypted base64
   try {
     return Buffer.from(record.data, 'base64').toString('utf-8');
   } catch {
@@ -309,6 +349,10 @@ const savePlainStore = async (filePath, value) => {
 };
 
 const loadSecureStore = async (filePath, fallback) => {
+  // Serve from in-memory cache — avoids repeated Keychain access.
+  if (_secureStoreCache.has(filePath)) {
+    return _secureStoreCache.get(filePath);
+  }
   try {
     const raw = await fs.readFile(filePath, 'utf-8');
     const record = safeJson(raw, null);
@@ -316,7 +360,9 @@ const loadSecureStore = async (filePath, fallback) => {
     if (!decrypted) {
       return fallback;
     }
-    return safeJson(decrypted, fallback);
+    const value = safeJson(decrypted, fallback);
+    _secureStoreCache.set(filePath, value);
+    return value;
   } catch {
     return fallback;
   }
@@ -327,6 +373,8 @@ const saveSecureStore = async (filePath, value) => {
   const plain = JSON.stringify(value);
   const encrypted = encryptString(plain);
   await fs.writeFile(filePath, JSON.stringify(encrypted, null, 2), 'utf-8');
+  // Update cache so subsequent reads never touch the Keychain.
+  _secureStoreCache.set(filePath, value);
 };
 
 const loadSettings = async () => {
