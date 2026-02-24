@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Play, Plus, RefreshCw, Square, Trash2 } from 'lucide-react';
+import { Play, Plus, RefreshCw, Send, Square, Trash2 } from 'lucide-react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // ─── .ipynb types ────────────────────────────────────────────────────────────
 
@@ -218,13 +220,96 @@ const OutputLine: React.FC<{ text: string }> = ({ text }) => {
   return null;
 };
 
+// ─── Code cell with syntax highlighting ──────────────────────────────────────
+
+const CellCodeEditor: React.FC<{
+  code: string;
+  isRunning: boolean;
+  onChange: (code: string) => void;
+  onRun: () => void;
+  onStop: () => void;
+}> = ({ code, isRunning, onChange, onRun, onStop }) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
+
+  const syncScroll = () => {
+    const ta = textareaRef.current;
+    const hl = highlightRef.current;
+    if (!ta || !hl) return;
+    hl.scrollTop = ta.scrollTop;
+    hl.scrollLeft = ta.scrollLeft;
+  };
+
+  const lineCount = Math.max(2, code.split('\n').length);
+
+  return (
+    <div
+      className={`rounded-sm border ${
+        isRunning
+          ? 'border-blue-400 shadow-[0_0_0_1px_rgba(96,165,250,0.4)]'
+          : 'border-gray-200 focus-within:border-blue-300'
+      } bg-[#f7f7f7] overflow-hidden relative`}
+    >
+      {/* Syntax highlight layer */}
+      <div
+        ref={highlightRef}
+        aria-hidden
+        className="absolute inset-0 overflow-auto pointer-events-none"
+      >
+        <SyntaxHighlighter
+          language="python"
+          style={vs}
+          PreTag="div"
+          customStyle={{
+            margin: 0,
+            borderRadius: 0,
+            background: 'transparent',
+            minHeight: '100%',
+            padding: '10px 12px',
+            fontSize: '13px',
+            lineHeight: '1.5rem',
+          }}
+        >
+          {code || ' '}
+        </SyntaxHighlighter>
+      </div>
+
+      {/* Editable textarea (transparent text, visible caret) */}
+      <textarea
+        ref={textareaRef}
+        value={code}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={syncScroll}
+        rows={lineCount}
+        className="relative z-10 w-full px-3 py-2.5 text-[13px] leading-6 font-mono bg-transparent resize-none outline-none border-0 text-transparent caret-black selection:bg-blue-200/70"
+        spellCheck={false}
+        onKeyDown={(e) => {
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            const el = e.currentTarget;
+            const s = el.selectionStart;
+            const end = el.selectionEnd;
+            onChange(`${el.value.slice(0, s)}    ${el.value.slice(end)}`);
+            window.setTimeout(() => { el.selectionStart = el.selectionEnd = s + 4; }, 0);
+          }
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            if (isRunning) onStop();
+            else onRun();
+          }
+        }}
+      />
+    </div>
+  );
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 interface Props {
   chapterId: string;
   filename: string;
   chapterTitle?: string;
-  onSendToTutor?: (msg: string) => void;
+  onSendToChatInput?: (msg: string) => void;
 }
 
 type KernelStatus = 'off' | 'starting' | 'idle' | 'busy' | 'error';
@@ -235,7 +320,7 @@ interface CellLive {
   abort: () => void;
 }
 
-const NotebookEditor: React.FC<Props> = ({ chapterId, filename, chapterTitle, onSendToTutor }) => {
+const NotebookEditor: React.FC<Props> = ({ chapterId, filename, chapterTitle, onSendToChatInput }) => {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [loadError, setLoadError] = useState('');
   const [kernelStatus, setKernelStatus] = useState<KernelStatus>('off');
@@ -549,6 +634,7 @@ const NotebookEditor: React.FC<Props> = ({ chapterId, filename, chapterTitle, on
         {notebook.cells.map((cell) => {
           const isRunning = runningCellId === cell.id;
           const live = cellLive[cell.id];
+          const cellCode = srcString(cell.source);
 
           // Build display output: live segments during execution, saved outputs otherwise
           const displaySegments: { text: string; isError: boolean }[] = isRunning && live
@@ -581,10 +667,27 @@ const NotebookEditor: React.FC<Props> = ({ chapterId, filename, chapterTitle, on
           return (
             <div key={cell.id} className="group flex gap-2">
               {/* Gutter */}
-              <div className="w-14 shrink-0 text-right pt-3 select-none">
+              <div className="w-14 shrink-0 text-right pt-3 select-none space-y-1">
                 <span className="text-[11px] font-mono text-blue-700/80 font-semibold">
                   In [{isRunning ? '*' : (cell.execution_count ?? ' ')}]:
                 </span>
+                {/* Send button under In[x]: */}
+                {onSendToChatInput && cellCode.trim() && (
+                  <button
+                    onClick={() => {
+                      let msg = `代码：\n\`\`\`python\n${cellCode.trim()}\n\`\`\``;
+                      if (textOut.trim()) {
+                        msg += `\n输出：\n\`\`\`\n${textOut.trim()}\n\`\`\``;
+                      }
+                      onSendToChatInput(msg);
+                    }}
+                    className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-blue-600 ml-auto"
+                    title="发送代码和输出到对话输入框"
+                  >
+                    <Send size={9} />
+                    发送
+                  </button>
+                )}
               </div>
 
               {/* Cell body */}
@@ -619,37 +722,14 @@ const NotebookEditor: React.FC<Props> = ({ chapterId, filename, chapterTitle, on
                   </div>
                 )}
 
-                {/* Code editor */}
-                <div
-                  className={`rounded-sm border ${
-                    isRunning
-                      ? 'border-blue-400 shadow-[0_0_0_1px_rgba(96,165,250,0.4)]'
-                      : 'border-gray-200 focus-within:border-blue-300'
-                  } bg-[#f7f7f7] overflow-hidden`}
-                >
-                  <textarea
-                    value={srcString(cell.source)}
-                    onChange={(e) => updateSource(cell.id, e.target.value)}
-                    rows={Math.max(2, srcString(cell.source).split('\n').length)}
-                    className="w-full px-3 py-2.5 text-[13px] leading-6 font-mono bg-transparent resize-none outline-none border-0"
-                    spellCheck={false}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Tab') {
-                        e.preventDefault();
-                        const el = e.currentTarget;
-                        const s = el.selectionStart;
-                        const end = el.selectionEnd;
-                        updateSource(cell.id, `${el.value.slice(0, s)}    ${el.value.slice(end)}`);
-                        window.setTimeout(() => { el.selectionStart = el.selectionEnd = s + 4; }, 0);
-                      }
-                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                        e.preventDefault();
-                        if (isRunning) stopCell();
-                        else runCell(cell.id);
-                      }
-                    }}
-                  />
-                </div>
+                {/* Code editor with syntax highlighting */}
+                <CellCodeEditor
+                  code={cellCode}
+                  isRunning={isRunning}
+                  onChange={(code) => updateSource(cell.id, code)}
+                  onRun={() => runCell(cell.id)}
+                  onStop={() => stopCell()}
+                />
 
                 {/* Output */}
                 {hasOut && (
@@ -679,20 +759,6 @@ const NotebookEditor: React.FC<Props> = ({ chapterId, filename, chapterTitle, on
                         )
                       )}
                     </div>
-                  </div>
-                )}
-
-                {/* Send to tutor */}
-                {hasOut && !isRunning && onSendToTutor && textOut && (
-                  <div className="mt-1 flex justify-end">
-                    <button
-                      onClick={() =>
-                        onSendToTutor(`Here is my notebook cell output:\n\`\`\`\n${textOut}\n\`\`\``)
-                      }
-                      className="text-[11px] text-gray-400 hover:text-gray-700 px-1.5 py-0.5"
-                    >
-                      Send to tutor ↑
-                    </button>
                   </div>
                 )}
               </div>

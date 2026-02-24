@@ -34,7 +34,6 @@ interface CodeEditorPanelProps {
   onOutputChange?: (chunks: OutputChunk[]) => void;
   onOutputGenerated?: (output: string) => void;
   onCodeInjectionHandled?: (injectionId: number) => void;
-  onSendToTutor?: (message: string) => void;
   onSendOutputToChatInput?: (message: string) => void;
 }
 
@@ -75,7 +74,6 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   onOutputChange,
   onOutputGenerated,
   onCodeInjectionHandled,
-  onSendToTutor,
   onSendOutputToChatInput,
 }) => {
   const [mode, setMode] = useState<EditorMode>('notebook');
@@ -693,7 +691,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
                 chapterId={chapterId}
                 filename={activeNotebook}
                 chapterTitle={chapterTitle}
-                onSendToTutor={onSendToTutor}
+                onSendToChatInput={onSendOutputToChatInput}
               />
             ) : bootedForChapterId !== chapterId ? (
               <div className="flex-1 flex items-center justify-center text-gray-300 text-sm">

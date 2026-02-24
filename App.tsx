@@ -805,10 +805,7 @@ const App: React.FC = () => {
                       }))
                     }
                     onSendOutputToChatInput={(message) => {
-                      pushChatInjection(currentChapter.id, `Here is my code output:\n${message}`, false, false);
-                    }}
-                    onSendToTutor={(message) => {
-                      pushChatInjection(currentChapter.id, message, true, true);
+                      pushChatInjection(currentChapter.id, message, false, false);
                     }}
                   />
                 </div>
