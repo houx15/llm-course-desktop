@@ -1,18 +1,40 @@
 import React, { useState } from 'react';
 import { Phase, Chapter } from '../types';
-import { ChevronDown, ChevronRight, Lock, CheckCircle2, List } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, CheckCircle2, List, Plus } from 'lucide-react';
 
 interface SidebarProps {
   phases: Phase[];
   currentChapterId: string | null;
   currentPhaseId: string | null;
+  currentSessionId: string | null | undefined;
   onSelectChapter: (chapter: Chapter, phase: Phase) => void;
   onSelectPhase: (phase: Phase) => void;
+  onCreateNewSession: (chapter: Chapter, phase: Phase) => void;
+  onSelectSession: (sessionId: string, chapter: Chapter, phase: Phase) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ phases, currentChapterId, currentPhaseId, onSelectChapter, onSelectPhase }) => {
+const formatShortDate = (isoString: string): string => {
+  const d = new Date(isoString);
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const hours = d.getHours().toString().padStart(2, '0');
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  return `${month}/${day} ${hours}:${minutes}`;
+};
+
+const Sidebar: React.FC<SidebarProps> = ({
+  phases,
+  currentChapterId,
+  currentPhaseId,
+  currentSessionId,
+  onSelectChapter,
+  onSelectPhase,
+  onCreateNewSession,
+  onSelectSession,
+}) => {
   // Initialize with all phases expanded
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set(phases.map(p => p.id)));
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
 
   const toggleExpand = (phaseId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -23,6 +45,16 @@ const Sidebar: React.FC<SidebarProps> = ({ phases, currentChapterId, currentPhas
       newExpanded.add(phaseId);
     }
     setExpandedPhases(newExpanded);
+  };
+
+  const toggleChapterExpand = (chapterId: string) => {
+    const newExpanded = new Set(expandedChapters);
+    if (newExpanded.has(chapterId)) {
+      newExpanded.delete(chapterId);
+    } else {
+      newExpanded.add(chapterId);
+    }
+    setExpandedChapters(newExpanded);
   };
 
   const renderStatusIcon = (status: string, isActive: boolean) => {
@@ -45,16 +77,16 @@ const Sidebar: React.FC<SidebarProps> = ({ phases, currentChapterId, currentPhas
          </span>
          <span className="text-[10px] px-2 py-0.5 bg-gray-100 rounded-full text-gray-500 font-mono">v1.0</span>
       </div>
-      
+
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {phases.map(phase => {
             const isPhaseActive = currentPhaseId === phase.id;
             const isLocked = phase.status === 'LOCKED';
-            
+
             return (
               <div key={phase.id} className="rounded-lg overflow-hidden">
                 {/* Phase Header */}
-                <div 
+                <div
                   className={`w-full flex items-center justify-between p-3 transition-colors cursor-pointer select-none ${
                       isPhaseActive ? 'bg-blue-50' : 'bg-white hover:bg-gray-100'
                   } ${isLocked ? 'opacity-70 grayscale' : ''}`}
@@ -66,38 +98,94 @@ const Sidebar: React.FC<SidebarProps> = ({ phases, currentChapterId, currentPhas
                     </span>
                     {renderStatusIcon(phase.status, isPhaseActive && !currentChapterId)}
                   </div>
-                  
-                  <button 
+
+                  <button
                     onClick={(e) => toggleExpand(phase.id, e)}
                     className="p-1 hover:bg-gray-200 rounded text-gray-400"
                   >
                     {expandedPhases.has(phase.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </button>
                 </div>
-                
+
                 {/* Chapter List */}
                 {expandedPhases.has(phase.id) && (
                   <div className="bg-gray-50/50">
                     {phase.chapters.map(chapter => {
                       const isChapterActive = currentChapterId === chapter.id;
                       const isChapterLocked = chapter.status === 'LOCKED';
-                      
+                      const sessions = chapter.sessions || [];
+                      const hasMultipleSessions = sessions.length > 1;
+                      const isChapterExpanded = expandedChapters.has(chapter.id);
+
                       return (
-                        <button
-                          key={chapter.id}
-                          disabled={isChapterLocked}
-                          onClick={() => onSelectChapter(chapter, phase)}
-                          className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-all border-l-2 ${
-                            isChapterActive
-                              ? 'bg-white border-orange-500 text-gray-900 font-medium shadow-sm'
-                              : 'border-transparent text-gray-600 hover:bg-gray-100'
-                          } ${isChapterLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                        >
-                          <div className="shrink-0 w-4 flex justify-center">
-                             {renderStatusIcon(chapter.status, isChapterActive)}
+                        <div key={chapter.id}>
+                          {/* Chapter row */}
+                          <div className="flex items-center group">
+                            <button
+                              disabled={isChapterLocked}
+                              onClick={() => onSelectChapter(chapter, phase)}
+                              className={`flex-1 text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-all border-l-2 ${
+                                isChapterActive
+                                  ? 'bg-white border-orange-500 text-gray-900 font-medium shadow-sm'
+                                  : 'border-transparent text-gray-600 hover:bg-gray-100'
+                              } ${isChapterLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                            >
+                              <div className="shrink-0 w-4 flex justify-center">
+                                 {renderStatusIcon(chapter.status, isChapterActive)}
+                              </div>
+                              <span className="truncate">{chapter.title}</span>
+                            </button>
+
+                            {/* Session count badge + expand toggle */}
+                            {hasMultipleSessions && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleChapterExpand(chapter.id); }}
+                                className="shrink-0 px-1.5 py-1 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5"
+                                title={`${sessions.length} 次会话`}
+                              >
+                                <span className="text-[10px] font-medium">{sessions.length}</span>
+                                {isChapterExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                              </button>
+                            )}
+
+                            {/* New session button */}
+                            {!isChapterLocked && chapter.status !== 'NOT_STARTED' && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onCreateNewSession(chapter, phase); }}
+                                className="shrink-0 w-6 h-6 mr-1 opacity-0 group-hover:opacity-100 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all"
+                                title="新建会话"
+                              >
+                                <Plus size={12} />
+                              </button>
+                            )}
                           </div>
-                          <span className="truncate">{chapter.title}</span>
-                        </button>
+
+                          {/* Session sub-list */}
+                          {isChapterExpanded && hasMultipleSessions && (
+                            <div className="ml-7 border-l border-gray-200">
+                              {sessions.map((session, idx) => (
+                                <button
+                                  key={session.sessionId}
+                                  onClick={() => onSelectSession(session.sessionId, chapter, phase)}
+                                  className={`w-full text-left pl-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+                                    currentSessionId === session.sessionId
+                                      ? 'text-blue-600 font-medium bg-blue-50/50'
+                                      : 'text-gray-500 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                    currentSessionId === session.sessionId ? 'bg-blue-500' : 'bg-gray-300'
+                                  }`} />
+                                  <span>会话 {sessions.length - idx}</span>
+                                  {session.turnCount > 0 && (
+                                    <span className="text-[10px] text-gray-400">{session.turnCount}轮</span>
+                                  )}
+                                  <span className="text-gray-400 ml-auto text-[10px]">{formatShortDate(session.createdAt)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>

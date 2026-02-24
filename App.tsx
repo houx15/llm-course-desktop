@@ -15,7 +15,8 @@ import { updateManager } from './services/updateManager';
 import { runtimeManager, NormalizedStreamEvent } from './services/runtimeManager';
 import { syncQueue } from './services/syncQueue';
 import { codeWorkspace } from './services/codeWorkspace';
-import { Phase, Chapter, CourseSummary, User } from './types';
+import { Phase, Chapter, CourseSummary, User, SessionSummary } from './types';
+import { fetchChapterSessions } from './services/backendClient';
 import SidecarDownloadProgress from './components/SidecarDownloadProgress';
 import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -35,6 +36,8 @@ const App: React.FC = () => {
   const [phases, setPhases] = useState<Phase[]>([]);
   const [currentPhase, setCurrentPhase] = useState<Phase | null>(null);
   const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null); // Null means showing Phase Overview
+  // undefined = auto-detect (first load), string = specific session, null = force-create new
+  const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(undefined);
   const [isCodeEditorOpen, setIsCodeEditorOpen] = useState(false);
   const [showResources, setShowResources] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -433,6 +436,26 @@ const App: React.FC = () => {
     }));
     setIsCodeEditorOpen(false);
 
+    // Fetch sessions list from backend and set active session
+    try {
+      const { sessions } = await fetchChapterSessions(chapterCode, courseId);
+      const mapped: SessionSummary[] = sessions.map(s => ({
+        sessionId: s.session_id,
+        createdAt: s.created_at,
+        lastActiveAt: s.last_active_at,
+        turnCount: s.turn_count,
+      }));
+      updateChapterModel(chapter.id, ch => ({ ...ch, sessions: mapped }));
+      if (mapped.length > 0) {
+        setActiveSessionId(mapped[0].sessionId);
+      } else {
+        setActiveSessionId(undefined);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch chapter sessions:', err);
+      setActiveSessionId(undefined as any);
+    }
+
     syncQueue.enqueueProgress({
       course_id: courseId,
       chapter_id: chapterCode,
@@ -448,6 +471,61 @@ const App: React.FC = () => {
       }))
       .then(() => syncQueue.flushAll())
       .catch((err) => console.warn('Progress/analytics sync failed:', err));
+  };
+
+  const handleCreateNewSession = async (chapter: Chapter, phase: Phase) => {
+    // Set activeSessionId to null first so CentralChat will force-create when it mounts
+    setActiveSessionId(null);
+    if (currentChapter?.id !== chapter.id) {
+      // Navigate to the chapter (sync bundles, set phase/chapter state, etc.)
+      // but skip the session-fetch since we're overriding with null anyway
+      const previousChapterId = currentChapter?.id || '';
+      if (previousChapterId && previousChapterId !== chapter.id) {
+        codeWorkspace.kill(previousChapterId).catch(() => {});
+      }
+      const chapterCode = chapter.id.includes('/') ? chapter.id.split('/').pop() || chapter.id : chapter.id;
+      const cId = activeCourseId || phase.id;
+      try {
+        await updateManager.syncChapterBundles(cId, chapterCode);
+      } catch (err) {
+        console.warn('Chapter update check failed:', err);
+      }
+      setCurrentPhase(phase);
+      setCurrentChapter(chapter);
+      setChapterRuntimeState((prev) => ({
+        ...prev,
+        [chapter.id]: prev[chapter.id] || { dynamicReport: '', roadmapUpdating: false, memoUpdating: false },
+      }));
+      setIsCodeEditorOpen(false);
+    }
+  };
+
+  const handleSelectSession = async (
+    sessionId: string,
+    chapter: Chapter,
+    phase: Phase,
+  ) => {
+    if (currentChapter?.id !== chapter.id) {
+      await handleSelectChapter(chapter, phase);
+    }
+    setActiveSessionId(sessionId);
+  };
+
+  const handleSessionIdChange = (newId: string) => {
+    setActiveSessionId(newId);
+    if (newId && currentChapter) {
+      updateChapterModel(currentChapter.id, ch => {
+        const existing = ch.sessions || [];
+        if (existing.some(s => s.sessionId === newId)) return ch;
+        return {
+          ...ch,
+          sessions: [
+            { sessionId: newId, createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), turnCount: 0 },
+            ...existing,
+          ],
+        };
+      });
+    }
   };
 
   const pickResumeChapter = (phase: Phase): Chapter | null => {
@@ -602,8 +680,11 @@ const App: React.FC = () => {
               phases={phases}
               currentPhaseId={currentPhase?.id || null}
               currentChapterId={currentChapter?.id || null}
+              currentSessionId={activeSessionId}
               onSelectPhase={handleSelectPhase}
               onSelectChapter={handleSelectChapter}
+              onCreateNewSession={handleCreateNewSession}
+              onSelectSession={handleSelectSession}
             />
           </div>
         ) : (
@@ -642,6 +723,8 @@ const App: React.FC = () => {
                   <CentralChat
                     chapter={currentChapter}
                     courseId={activeCourseId || currentPhase?.id || ''}
+                    requestedSessionId={activeSessionId}
+                    onSessionIdChange={handleSessionIdChange}
                     onStartCoding={openCodeEditor}
                     onRuntimeEvent={(event) => handleChapterRuntimeEvent(currentChapter.id, event)}
                     onOpenInEditor={(payload) => handleOpenCodeFromChat(currentChapter.id, payload)}

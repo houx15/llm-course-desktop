@@ -34,6 +34,13 @@ export interface Lesson {
   title: string;
 }
 
+export interface SessionSummary {
+  sessionId: string;
+  createdAt: string;
+  lastActiveAt: string;
+  turnCount: number;
+}
+
 export interface Chapter {
   id: string;
   title: string;
@@ -52,6 +59,8 @@ export interface Chapter {
   resources: Resource[];
   lessons: Lesson[];
   colabLink?: string;
+  sessions?: SessionSummary[];
+  activeSessionId?: string | null;
 }
 
 export interface Phase {

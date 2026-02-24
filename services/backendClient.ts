@@ -135,6 +135,31 @@ export const fetchSessionState = (chapterId: string, courseId?: string | null): 
   );
 };
 
+export interface SessionSummaryResult {
+  session_id: string;
+  created_at: string;
+  last_active_at: string;
+  turn_count: number;
+}
+
+export const fetchChapterSessions = (
+  chapterId: string,
+  courseId?: string | null,
+): Promise<{ sessions: SessionSummaryResult[] }> => {
+  const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : '';
+  return backendClient.get<{ sessions: SessionSummaryResult[] }>(
+    `/v1/chapters/${encodeURIComponent(chapterId)}/sessions${query}`
+  );
+};
+
+export const fetchSessionStateById = (
+  sessionId: string,
+): Promise<SessionStateResult> => {
+  return backendClient.get<SessionStateResult>(
+    `/v1/sessions/${encodeURIComponent(sessionId)}/state`
+  );
+};
+
 export async function getWorkspaceUploadUrl(params: {
   chapterId: string;
   filename: string;
