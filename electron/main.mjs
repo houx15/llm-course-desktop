@@ -1238,13 +1238,13 @@ const pathExists = async (candidatePath) => {
 };
 
 // Conda must live in a space-free path — pip refuses to install into directories with spaces.
-// macOS userData is ~/Library/Application Support/... (has space), so we use home dir instead.
-// Conda lives alongside all other app data in userData (~/.knoweia/miniconda).
-// On Windows, %APPDATA% can have spaces; use %LOCALAPPDATA% as a safer fallback.
+// macOS: ~/.knoweia/miniconda (homedir never has spaces on macOS).
+// Windows: C:\knoweia\miniconda as the safe default.  Both %LOCALAPPDATA% and os.homedir()
+// can contain spaces when the Windows username has spaces (e.g. "John Smith", "张 三"),
+// and there is no reliable short-path alias.  A root-drive folder avoids this entirely.
 const getCondaRoot = () => {
   if (process.platform === 'win32') {
-    const base = process.env.LOCALAPPDATA || userDataDir;
-    return path.join(base, 'knoweia', 'miniconda');
+    return path.join(process.env.SystemDrive || 'C:', 'knoweia', 'miniconda');
   }
   return path.join(userDataDir, 'miniconda');
 };
