@@ -3140,9 +3140,15 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const rows = Number(payload?.rows) || 24;
 
   // Resolve shell — Electron may not inherit SHELL when launched from Dock
-  let shellName = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh');
-  if (process.platform !== 'win32' && !(await pathExists(shellName))) {
-    shellName = '/bin/zsh';
+  let shellName, shellArgs;
+  if (process.platform === 'win32') {
+    // Use cmd.exe on Windows — PowerShell often blocks scripts via ExecutionPolicy
+    shellName = process.env.COMSPEC || 'cmd.exe';
+    shellArgs = [];
+  } else {
+    shellName = process.env.SHELL || '/bin/zsh';
+    if (!(await pathExists(shellName))) shellName = '/bin/zsh';
+    shellArgs = ['-l'];
   }
 
   // Build conda activation command
@@ -3150,7 +3156,7 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
   const condaShExists = await pathExists(condaSh);
 
-  const ptyProcess = nodePty.spawn(shellName, ['-l'], {
+  const ptyProcess = nodePty.spawn(shellName, shellArgs, {
     name: 'xterm-256color',
     cols,
     rows,
@@ -3171,7 +3177,13 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   });
 
   // Auto-activate conda env if available
-  if (condaShExists) {
+  if (process.platform === 'win32') {
+    const condaBat = path.join(condaRoot, 'Scripts', 'activate.bat');
+    const condaBatExists = await pathExists(condaBat);
+    if (condaBatExists) {
+      ptyProcess.write(`"${condaBat}" sidecar\r`);
+    }
+  } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
   }
 

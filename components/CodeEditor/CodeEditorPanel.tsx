@@ -214,10 +214,11 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
 
     const loadOptionalMonaco = async () => {
       try {
-        const imported = await import('@monaco-editor/react');
+        // Use local bundled Monaco instead of CDN (CDN is blocked in China)
+        const { Editor } = await import('./monacoSetup');
         if (cancelled) return;
-        if (imported?.default) {
-          setMonacoEditor(() => imported.default as MonacoEditorComponent);
+        if (Editor) {
+          setMonacoEditor(() => Editor as MonacoEditorComponent);
         }
       } catch {
         if (cancelled) return;
