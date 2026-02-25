@@ -91,34 +91,17 @@ contextBridge.exposeInMainWorld('tutorApp', {
     return () => ipcRenderer.removeListener('code:exit', listener);
   },
 
-  spawnTerminal: (payload) => {
-    console.log('[PRELOAD spawnTerminal]', JSON.stringify(payload));
-    return ipcRenderer.invoke('pty:spawn', payload);
-  },
-  writeTerminal: (payload) => {
-    console.log('[PRELOAD writeTerminal]', JSON.stringify(payload).slice(0, 120));
-    return ipcRenderer.invoke('pty:write', payload);
-  },
+  spawnTerminal: (payload) => ipcRenderer.invoke('pty:spawn', payload),
+  writeTerminal: (payload) => ipcRenderer.invoke('pty:write', payload),
   resizeTerminal: (payload) => ipcRenderer.invoke('pty:resize', payload),
-  killTerminal: (payload) => {
-    console.log('[PRELOAD killTerminal]', JSON.stringify(payload));
-    return ipcRenderer.invoke('pty:kill', payload);
-  },
+  killTerminal: (payload) => ipcRenderer.invoke('pty:kill', payload),
   onTerminalData: (callback) => {
-    let count = 0;
-    const listener = (_event, payload) => {
-      count++;
-      if (count <= 5) console.log(`[PRELOAD pty:data #${count}]`, payload.chapterId, 'len=' + (payload.data?.length || 0));
-      callback(payload);
-    };
+    const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('pty:data', listener);
     return () => ipcRenderer.removeListener('pty:data', listener);
   },
   onTerminalExit: (callback) => {
-    const listener = (_event, payload) => {
-      console.log('[PRELOAD pty:exit]', JSON.stringify(payload));
-      callback(payload);
-    };
+    const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('pty:exit', listener);
     return () => ipcRenderer.removeListener('pty:exit', listener);
   },
