@@ -3180,12 +3180,20 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   // On macOS/Linux, -l starts a login shell.
   const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-NoLogo'] : ['-l'];
 
+  // VS Code uses the shell basename as the PTY name on Windows (required by
+  // ConPTY for proper input handling), and 'xterm-256color' on other platforms.
+  const ptyName = process.platform === 'win32'
+    ? path.basename(shellName)
+    : 'xterm-256color';
+
   const ptyProcess = nodePty.spawn(shellName, shellArgs, {
-    name: 'xterm-256color',
+    name: ptyName,
     cols,
     rows,
     cwd: chapterDir,
     env: { ...process.env, TERM: 'xterm-256color' },
+    // Enable ConPTY on Windows (same as VS Code's approach)
+    ...(process.platform === 'win32' ? { useConpty: true, conptyInheritCursor: true } : {}),
   });
 
   const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender };
