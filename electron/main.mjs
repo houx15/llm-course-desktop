@@ -3205,11 +3205,11 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   // Auto-activate conda env if available
   if (process.platform === 'win32') {
-    // Use condabin\conda.bat which properly resolves env names
+    // Activate by full path — more reliable than by name on Windows
+    const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
     const condaBat = path.join(condaRoot, 'condabin', 'conda.bat');
-    const condaBatExists = await pathExists(condaBat);
-    if (condaBatExists) {
-      ptyProcess.write(`"${condaBat}" activate sidecar\r`);
+    if (await pathExists(condaBat) && await pathExists(condaEnvPath)) {
+      ptyProcess.write(`"${condaBat}" activate "${condaEnvPath}"\r`);
     }
   } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
