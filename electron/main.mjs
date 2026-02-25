@@ -2916,21 +2916,13 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
   const condaShExists = await pathExists(condaSh);
 
-  console.log('[pty:spawn]', { shellName, cwd: chapterDir, cols, rows, condaShExists });
-
-  let ptyProcess;
-  try {
-    ptyProcess = nodePty.spawn(shellName, ['-l'], {
-      name: 'xterm-256color',
-      cols,
-      rows,
-      cwd: chapterDir,
-      env: { ...process.env, TERM: 'xterm-256color' },
-    });
-  } catch (spawnErr) {
-    console.error('[pty:spawn] nodePty.spawn failed:', spawnErr);
-    throw new Error(`Terminal spawn failed (shell=${shellName}): ${spawnErr.message}`);
-  }
+  const ptyProcess = nodePty.spawn(shellName, ['-l'], {
+    name: 'xterm-256color',
+    cols,
+    rows,
+    cwd: chapterDir,
+    env: { ...process.env, TERM: 'xterm-256color' },
+  });
 
   const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender };
   ptyByChapter.set(chapterSegment, entry);

@@ -381,7 +381,9 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   }, [chapterId]);
 
   useEffect(() => {
-    if (!activeFile || skipAutosaveRef.current) {
+    // Don't autosave when in notebook mode — the script editor is unmounted and
+    // Monaco may fire onChange('') during teardown, which would overwrite the file.
+    if (!activeFile || skipAutosaveRef.current || mode === 'notebook') {
       return;
     }
     if (saveTimerRef.current) {
@@ -397,7 +399,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         window.clearTimeout(saveTimerRef.current);
       }
     };
-  }, [chapterId, activeFile, code]);
+  }, [chapterId, activeFile, code, mode]);
 
   useEffect(() => {
     if (!codeInjection?.id || !activeFile) {
@@ -535,10 +537,15 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const handleSidebarSelectFile = (filename: string) => {
     const isNotebook = filename.toLowerCase().endsWith('.ipynb');
     if (isNotebook) {
+      // Flush .py content to disk BEFORE mode switch, because Monaco may fire
+      // onChange('') during unmount which would overwrite latestDocRef with empty code.
+      flushPendingSave();
+      skipAutosaveRef.current = true;
       setActiveNotebook(filename);
       setMode('notebook');
     } else {
       flushPendingSave();
+      skipAutosaveRef.current = false;
       setMode('script');
       handleSelectFile(filename);
     }
