@@ -201,6 +201,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   };
 
   const handleSelectFile = async (filename: string) => {
+    if (filename === activeFile) return; // Already viewing this file
     flushPendingSave();
     setActiveFile(filename);
     onActiveFileChange?.(filename);
@@ -342,9 +343,9 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     };
   }, [chapterId]);
 
-  useEffect(() => {
-    latestDocRef.current = { chapterId, activeFile, code };
-  }, [chapterId, activeFile, code]);
+  // Update synchronously during render (not in useEffect) so flushPendingSave
+  // always reads the latest values, even when called before React re-renders.
+  latestDocRef.current = { chapterId, activeFile, code };
 
   useEffect(() => {
     return () => {
