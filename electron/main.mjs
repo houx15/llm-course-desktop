@@ -3162,6 +3162,7 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   // React StrictMode double-mounts effects in dev).
   const existing = ptyByChapter.get(chapterSegment);
   if (existing) {
+    console.log(`[PTY REPLACE] killing old session ${existing.sessionId} for ${chapterSegment}`);
     existing.replaced = true;
     try { existing.pty.kill(); } catch {}
     ptyByChapter.delete(chapterSegment);
@@ -3193,9 +3194,12 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     ? path.basename(shellName)
     : 'xterm-256color';
 
+  // Unique session ID for debugging — distinguishes PTY A vs PTY B in logs
+  const ptySessionId = Math.random().toString(36).slice(2, 8);
+
   // Verify cwd exists before spawn
   const cwdExists = await pathExists(chapterDir);
-  console.log(`[PTY SPAWN] shell=${shellName} args=${JSON.stringify(shellArgs)} cwd=${chapterDir} cwdExists=${cwdExists}`);
+  console.log(`[PTY SPAWN ${ptySessionId}] shell=${shellName} args=${JSON.stringify(shellArgs)} cwd=${chapterDir} cwdExists=${cwdExists} cols=${cols} rows=${rows}`);
 
   // Keep spawn env unmodified to avoid Windows env var casing issues
   // (e.g. Path vs PATH duplication) that can crash the child process.
@@ -3209,21 +3213,22 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     ...(process.platform === 'win32' ? { useConpty: true, conptyInheritCursor: true } : {}),
   });
 
-  const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender };
+  console.log(`[PTY SPAWNED ${ptySessionId}] pid=${ptyProcess.pid}`);
+
+  const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender, sessionId: ptySessionId };
   ptyByChapter.set(chapterSegment, entry);
 
   let ptyDataCount = 0;
   ptyProcess.onData((data) => {
     if (entry.replaced) return; // Don't send data from a replaced PTY to the renderer
     ptyDataCount++;
-    if (ptyDataCount <= 5) {
-      console.log(`[PTY DATA #${ptyDataCount}] chapterId=${rawChapterId} len=${data.length} data=${JSON.stringify(data).slice(0, 120)}`);
-    }
+    // Log all output events (not just first 5) to trace input echo
+    console.log(`[PTY DATA ${ptySessionId} #${ptyDataCount}] len=${data.length} data=${JSON.stringify(data).slice(0, 150)}`);
     try { entry.sender.send('pty:data', { chapterId: rawChapterId, data }); } catch {}
   });
 
   ptyProcess.onExit(({ exitCode, signal }) => {
-    console.log(`[PTY EXIT] chapterId=${rawChapterId} exitCode=${exitCode} signal=${signal} replaced=${!!entry.replaced}`);
+    console.log(`[PTY EXIT ${ptySessionId}] exitCode=${exitCode} signal=${signal} replaced=${!!entry.replaced}`);
     if (entry.replaced) return; // Silently ignore — a new PTY already took over this slot
     ptyByChapter.delete(chapterSegment);
     try { entry.sender.send('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
@@ -3261,9 +3266,11 @@ ipcMain.handle('pty:write', async (_event, payload) => {
   const chapterSegment = sanitizeSegment(chapterId);
   const entry = ptyByChapter.get(chapterSegment);
   const found = !!entry;
-  if (entry) entry.pty.write(data);
-  console.log(`[PTY WRITE] chapterId=${chapterId} segment=${chapterSegment} found=${found} dataLen=${data.length} data=${JSON.stringify(data).slice(0, 80)}`);
-  return { ok: found };
+  const sid = entry?.sessionId || 'none';
+  const replaced = entry?.replaced || false;
+  if (entry && !replaced) entry.pty.write(data);
+  console.log(`[PTY WRITE ${sid}] found=${found} replaced=${replaced} dataLen=${data.length} data=${JSON.stringify(data).slice(0, 80)}`);
+  return { ok: found && !replaced };
 });
 
 ipcMain.handle('pty:resize', async (_event, payload) => {
