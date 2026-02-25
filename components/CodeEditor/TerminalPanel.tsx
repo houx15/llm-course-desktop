@@ -66,8 +66,13 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({ chapterId, visible }) => 
     });
 
     // Receive PTY output
+    let recvCount = 0;
     offDataRef.current = window.tutorApp.onTerminalData((payload) => {
       if (payload.chapterId !== activeChapter) return;
+      recvCount++;
+      if (recvCount <= 5) {
+        console.log(`[TERM RECV #${recvCount}] chapterId=${payload.chapterId} len=${payload.data?.length || 0} data=${JSON.stringify(payload.data).slice(0, 120)}`);
+      }
       term.write(payload.data);
     });
 
