@@ -3223,8 +3223,8 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   ptyProcess.onExit(({ exitCode, signal }) => {
     console.log(`[PTY EXIT] chapterId=${rawChapterId} exitCode=${exitCode} signal=${signal} replaced=${!!entry.replaced}`);
+    if (entry.replaced) return; // Silently ignore — a new PTY already took over this slot
     ptyByChapter.delete(chapterSegment);
-    if (entry.replaced) return; // Silently ignore — a new PTY was spawned for this chapter
     try { entry.sender.send('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
   });
 
