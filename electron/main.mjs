@@ -3164,22 +3164,21 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const rows = Number(payload?.rows) || 24;
 
   // Resolve shell — Electron may not inherit SHELL when launched from Dock
-  let shellName, shellArgs;
-  if (process.platform === 'win32') {
-    // PowerShell with -NoProfile (skip profile.ps1 that may be blocked by
-    // ExecutionPolicy) and -ExecutionPolicy Bypass for conda activation.
-    shellName = 'powershell.exe';
-    shellArgs = ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass'];
-  } else {
-    shellName = process.env.SHELL || '/bin/zsh';
-    if (!(await pathExists(shellName))) shellName = '/bin/zsh';
-    shellArgs = ['-l'];
+  let shellName = process.platform === 'win32'
+    ? 'powershell.exe'
+    : (process.env.SHELL || '/bin/zsh');
+  if (process.platform !== 'win32' && !(await pathExists(shellName))) {
+    shellName = '/bin/zsh';
   }
 
   // Build conda activation command
   const condaRoot = getCondaRoot();
   const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
   const condaShExists = await pathExists(condaSh);
+
+  // On Windows, -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy).
+  // On macOS/Linux, -l starts a login shell.
+  const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-NoLogo'] : ['-l'];
 
   const ptyProcess = nodePty.spawn(shellName, shellArgs, {
     name: 'xterm-256color',
@@ -3203,11 +3202,11 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   // Auto-activate conda env if available
   if (process.platform === 'win32') {
-    // Activate conda in PowerShell via the hook script, then activate env by path
+    // Set PATH directly — avoids running .ps1 scripts that may be blocked
     const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
-    const condaHook = path.join(condaRoot, 'shell', 'condabin', 'conda-hook.ps1');
-    if (await pathExists(condaHook) && await pathExists(condaEnvPath)) {
-      ptyProcess.write(`& "${condaHook}"; conda activate "${condaEnvPath}"\r`);
+    if (await pathExists(condaEnvPath)) {
+      const scriptsDir = path.join(condaEnvPath, 'Scripts');
+      ptyProcess.write(`$env:PATH = "${condaEnvPath};${scriptsDir};$env:PATH"\r`);
     }
   } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
