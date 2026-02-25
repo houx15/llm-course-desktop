@@ -3,7 +3,7 @@
   "productName": "Knoweia",
   "description": "Knoweia desktop app for AI-powered tutoring and course learning.",
   "private": true,
-  "version": "0.1.0-dev.2",
+  "version": "0.1.0-dev.3",
   "main": "electron/main.mjs",
   "type": "module",
   "scripts": {
@@ -15,7 +15,7 @@
     "dev:renderer": "vite",
     "dev:electron": "VITE_DEV_SERVER_URL=http://localhost:3000 electron ./electron/main.mjs",
     "dev:desktop": "concurrently -k \"npm run dev:renderer\" \"npm run dev:electron\"",
-    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null; chmod +x node_modules/node-pty/build/Release/spawn-helper 2>/dev/null; true",
+    "postinstall": "node -e \"if(process.platform!=='win32'){require('child_process').execSync('chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null; chmod +x node_modules/node-pty/build/Release/spawn-helper 2>/dev/null; true',{stdio:'inherit'})}\"",
     "pack:desktop": "npm run build:renderer && npm_config_electron_mirror= electron-builder --dir",
     "build:desktop": "npm run build:renderer && npm_config_electron_mirror= electron-builder"
   },
