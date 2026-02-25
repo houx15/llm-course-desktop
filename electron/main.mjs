@@ -1497,11 +1497,16 @@ const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
       await runSubprocess('bash', [installerPath, '-b', '-u', '-p', condaRoot]);
     }
 
-    // Write .condarc to use Tsinghua channels
+    // Write .condarc to use Tsinghua channels and register envs_dirs.
+    // On Windows with a non-standard install path, conda won't resolve
+    // named environments unless envs_dirs explicitly includes <root>/envs.
+    const envsDirLine = path.join(condaRoot, 'envs').replace(/\\/g, '/');
     const condarc = [
       'default_channels:',
       ...runtimeConfig.conda_channels.map((ch) => `  - ${ch}`),
       'show_channel_urls: true',
+      'envs_dirs:',
+      `  - ${envsDirLine}`,
     ].join('\n') + '\n';
     await fs.writeFile(path.join(condaRoot, '.condarc'), condarc, 'utf8');
   } finally {
