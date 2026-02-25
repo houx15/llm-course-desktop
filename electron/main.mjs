@@ -144,21 +144,24 @@ async function cleanupOrphanedJupyterProcesses() {
 // Kill whatever process currently holds a given port (used to reclaim port 8000 for sidecar)
 async function killProcessOnPort(port) {
   console.log(`[startup] killProcessOnPort(${port}) — checking...`);
+  const myPid = process.pid;
   let killed = false;
   try {
     if (process.platform === 'win32') {
+      // Use netstat to find PIDs, then taskkill to kill them.
+      // process.kill('SIGKILL') can cause ACCESS_VIOLATION on Windows.
       const out = await runCommand('netstat', ['-ano']);
       const pids = new Set();
       for (const line of out.split('\n')) {
         if (line.includes(`:${port} `) || line.includes(`:${port}\t`)) {
           const parts = line.trim().split(/\s+/);
           const pid = parseInt(parts[parts.length - 1], 10);
-          if (!isNaN(pid) && pid > 0) pids.add(pid);
+          if (!isNaN(pid) && pid > 0 && pid !== myPid) pids.add(pid);
         }
       }
       for (const pid of pids) {
-        console.log(`[startup] killProcessOnPort: killing PID ${pid} (SIGKILL)`);
-        try { process.kill(pid, 'SIGKILL'); killed = true; } catch { /* ignore */ }
+        console.log(`[startup] killProcessOnPort: killing PID ${pid} via taskkill`);
+        try { await runCommand('taskkill', ['/F', '/PID', String(pid)]); killed = true; } catch { /* ignore */ }
       }
     } else {
       const out = await runCommand('lsof', ['-ti', `:${port}`]);
@@ -166,13 +169,15 @@ async function killProcessOnPort(port) {
       console.log(`[startup] killProcessOnPort: lsof found PIDs: ${foundPids.length ? foundPids.join(', ') : '(none)'}`);
       for (const pidStr of foundPids) {
         const pid = parseInt(pidStr, 10);
-        if (!isNaN(pid) && pid > 0) {
+        if (!isNaN(pid) && pid > 0 && pid !== myPid) {
           console.log(`[startup] killProcessOnPort: killing PID ${pid} (SIGKILL)`);
           try { process.kill(pid, 'SIGKILL'); killed = true; } catch { /* ignore */ }
         }
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.warn(`[startup] killProcessOnPort: error:`, err?.message || err);
+  }
   if (killed) {
     console.log(`[startup] killProcessOnPort: waiting for port ${port} to be free...`);
     const deadline = Date.now() + 5000;
