@@ -3184,10 +3184,9 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
   const condaShExists = await pathExists(condaSh);
 
-  // On Windows, -NoExit keeps PowerShell alive as an interactive session,
-  // -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy).
+  // On Windows, -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy).
   // On macOS/Linux, -l starts a login shell.
-  const shellArgs = process.platform === 'win32' ? ['-NoExit', '-NoProfile', '-NoLogo'] : ['-l'];
+  const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-NoLogo'] : ['-l'];
 
   // VS Code uses the shell basename as the PTY name on Windows (required by
   // ConPTY for proper input handling), and 'xterm-256color' on other platforms.
@@ -3225,10 +3224,11 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     try { entry.sender.send('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
   });
 
-  // Auto-activate conda env after the shell is ready.
-  // On Windows, use PowerShell $env: assignments (no .ps1 scripts needed,
-  // avoids ExecutionPolicy restrictions). Wait for first output to ensure
-  // the shell has started before writing.
+  // Auto-activate conda env.
+  // On macOS/Linux: source conda.sh (runs immediately, shell buffers input).
+  // On Windows: set $env:Path via PowerShell assignment (no .ps1 scripts needed,
+  // avoids ExecutionPolicy restrictions). ConPTY buffers the write until the
+  // shell is ready to read.
   if (process.platform === 'win32') {
     const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
     if (await pathExists(condaEnvPath)) {
@@ -3241,13 +3241,7 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
         path.join(condaEnvPath, 'bin'),
         path.join(condaRoot, 'condabin'),
       ].join(';');
-      // Wait for the shell's first output (prompt), then set PATH.
-      // PowerShell's $env:Path is case-insensitive, so no casing issues.
-      const onReady = (data) => {
-        ptyProcess.removeListener('data', onReady);
-        ptyProcess.write(`$env:Path = '${condaPaths.replace(/'/g, "''")}' + ';' + $env:Path\r`);
-      };
-      ptyProcess.on('data', onReady);
+      ptyProcess.write(`$env:Path = '${condaPaths.replace(/'/g, "''")}' + ';' + $env:Path\r`);
     }
   } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
