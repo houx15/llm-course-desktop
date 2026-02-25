@@ -142,6 +142,7 @@ async function cleanupOrphanedJupyterProcesses() {
 
 // Kill whatever process currently holds a given port (used to reclaim port 8000 for sidecar)
 async function killProcessOnPort(port) {
+  let killed = false;
   try {
     if (process.platform === 'win32') {
       const out = await runCommand('netstat', ['-ano']);
@@ -154,18 +155,22 @@ async function killProcessOnPort(port) {
         }
       }
       for (const pid of pids) {
-        try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ }
+        try { process.kill(pid, 'SIGKILL'); killed = true; } catch { /* ignore */ }
       }
     } else {
       const out = await runCommand('lsof', ['-ti', `:${port}`]);
       for (const pidStr of out.split('\n').filter(Boolean)) {
         const pid = parseInt(pidStr, 10);
         if (!isNaN(pid) && pid > 0) {
-          try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ }
+          try { process.kill(pid, 'SIGKILL'); killed = true; } catch { /* ignore */ }
         }
       }
     }
   } catch { /* ignore */ }
+  // Wait for port to be released after killing
+  if (killed) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
 
 const defaultSettings = () => ({
@@ -2256,18 +2261,38 @@ const clearRuntimeRestartTimer = () => {
 };
 
 const killStaleProcessOnPort = async (port) => {
+  let killed = false;
   try {
-    const pids = execSync(`lsof -ti:${port}`, { encoding: 'utf8', timeout: 3000 })
-      .trim()
-      .split('\n')
-      .filter(Boolean);
-    for (const pid of pids) {
-      try { process.kill(Number(pid), 'SIGKILL'); } catch { /* already dead */ }
+    if (process.platform === 'win32') {
+      // netstat -ano lists all connections with PIDs
+      const out = execSync('netstat -ano', { encoding: 'utf8', timeout: 5000 });
+      const pids = new Set();
+      for (const line of out.split('\n')) {
+        if (line.includes(`:${port} `) || line.includes(`:${port}\t`)) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(pid) && pid > 0) pids.add(pid);
+        }
+      }
+      for (const pid of pids) {
+        try {
+          execSync(`taskkill /F /PID ${pid}`, { timeout: 3000 });
+          killed = true;
+        } catch { /* already dead */ }
+      }
+    } else {
+      const pids = execSync(`lsof -ti:${port}`, { encoding: 'utf8', timeout: 3000 })
+        .trim()
+        .split('\n')
+        .filter(Boolean);
+      for (const pid of pids) {
+        try { process.kill(Number(pid), 'SIGKILL'); killed = true; } catch { /* already dead */ }
+      }
     }
-    if (pids.length) {
-      await new Promise((r) => setTimeout(r, 300));
-    }
-  } catch { /* lsof returns non-zero when no process found — expected */ }
+  } catch { /* command fails when no process found — expected */ }
+  if (killed) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
 };
 
 const stopRuntimeProcess = (intentional = true) => {
