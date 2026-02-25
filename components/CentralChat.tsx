@@ -4,7 +4,7 @@ import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManage
 import { syncQueue } from '../services/syncQueue';
 import { fetchSessionState, fetchSessionStateById, listWorkspaceSubmittedFiles } from '../services/backendClient';
 import { codeWorkspace } from '../services/codeWorkspace';
-import { Bot, User, SendHorizontal, Loader2, Terminal } from 'lucide-react';
+import { Bot, User, SendHorizontal, Loader2, Terminal, Maximize2, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -28,6 +28,8 @@ interface CentralChatProps {
   injectedInput?: ChatInputInjection | null;
   onInjectedHandled?: (injectionId: number) => void;
 }
+
+const MAX_CHARS = 5000;
 
 const CentralChat: React.FC<CentralChatProps> = ({
   chapter,
@@ -53,6 +55,9 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
   const handledInjectionIdRef = useRef<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const composingRef = useRef(false);
+  const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isSyncableCodeFile = (name: string) => {
     const lower = String(name || '').toLowerCase();
@@ -92,6 +97,22 @@ const CentralChat: React.FC<CentralChatProps> = ({
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 300)}px`;
   };
+
+  // Auto-resize textarea when inputValue changes programmatically (e.g. injection)
+  useEffect(() => {
+    if (!expanded) {
+      requestAnimationFrame(() => autoResizeTextarea());
+    }
+  }, [inputValue, expanded]);
+
+  // Focus expanded textarea when expanded mode opens
+  useEffect(() => {
+    if (expanded && expandedTextareaRef.current) {
+      expandedTextareaRef.current.focus();
+      const len = expandedTextareaRef.current.value.length;
+      expandedTextareaRef.current.setSelectionRange(len, len);
+    }
+  }, [expanded]);
 
   const turnsToMessages = (
     turns: Array<{ user_message: string; companion_response: string }>
@@ -528,19 +549,24 @@ const CentralChat: React.FC<CentralChatProps> = ({
       return;
     }
 
+    const hasCode = text.includes('```') || text.split('\n').length > 5;
     setInputValue((prev) => {
-      if (replace || !prev.trim()) {
-        return text;
-      }
-      return `${prev}\n${text}`;
+      const newVal = (replace || !prev.trim()) ? text : `${prev}\n${text}`;
+      return newVal.length <= MAX_CHARS ? newVal : newVal.slice(0, MAX_CHARS);
     });
+    if (hasCode) setExpanded(true);
     onInjectedHandled?.(injectedInput.id);
   }, [injectedInput, sessionId, isLoading]);
+
+  const handleInputChange = (val: string) => {
+    setInputValue(val.length <= MAX_CHARS ? val : val.slice(0, MAX_CHARS));
+  };
 
   const handleSend = async () => {
     const text = inputValue;
     if (!text.trim()) return;
     setInputValue('');
+    setExpanded(false);
     // Reset textarea height after clearing
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -552,7 +578,18 @@ const CentralChat: React.FC<CentralChatProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !composingRef.current && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleExpandedKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setExpanded(false);
+      return;
+    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !composingRef.current && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
@@ -620,6 +657,9 @@ const CentralChat: React.FC<CentralChatProps> = ({
       </div>
     );
   }
+
+  const charCount = inputValue.length;
+  const charColorClass = charCount >= MAX_CHARS ? 'text-red-500' : charCount >= MAX_CHARS * 0.9 ? 'text-orange-500' : 'text-green-600';
 
   return (
     <div className="flex flex-col h-full bg-white relative">
@@ -717,45 +757,101 @@ const CentralChat: React.FC<CentralChatProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-6 bg-white border-t border-gray-100 z-10">
-        <div className="max-w-4xl mx-auto relative flex gap-3 items-end">
-          {/* TODO: re-enable attachment flow after backend + upload UX is finalized.
-          <button className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors" title="添加附件">
-            <Paperclip size={20} />
-          </button>
-          */}
+      <div className="p-4 sm:p-6 bg-white border-t border-gray-100 z-10">
+        <div className="max-w-4xl mx-auto">
+          <div className="relative flex gap-3 items-end">
+            {onStartCoding && (
+              <button
+                onClick={onStartCoding}
+                className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors shrink-0"
+                title="打开代码编辑器"
+              >
+                <Terminal size={20} />
+              </button>
+            )}
 
-          {onStartCoding && (
-            <button
-              onClick={onStartCoding}
-              className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors shrink-0"
-              title="打开代码编辑器"
-            >
-              <Terminal size={20} />
-            </button>
-          )}
-
-          <div className="flex-1 relative shadow-sm rounded-2xl border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
-            <textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => { setInputValue(e.target.value); autoResizeTextarea(); }}
-              onKeyDown={handleKeyDown}
-              placeholder="输入你的问题或代码... (Shift+Enter 换行)"
-              className="w-full pl-4 pr-12 py-3 bg-transparent border-none outline-none resize-none text-sm overflow-y-auto"
-              style={{ minHeight: '50px', maxHeight: '300px' }}
-              rows={1}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!inputValue.trim() || isLoading || !sessionId}
-              className="absolute right-2 bottom-2 p-1.5 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <SendHorizontal size={16} />
-            </button>
+            <div className="flex-1 relative shadow-sm rounded-2xl border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
+              <textarea
+                ref={textareaRef}
+                value={inputValue}
+                onChange={(e) => handleInputChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onCompositionStart={() => { composingRef.current = true; }}
+                onCompositionEnd={() => { composingRef.current = false; }}
+                placeholder="输入你的问题或代码... (Shift+Enter 换行)"
+                className="w-full pl-4 pr-20 py-3 bg-transparent border-none outline-none resize-none text-sm overflow-y-auto"
+                style={{ minHeight: '50px', maxHeight: '300px' }}
+                rows={1}
+              />
+              <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                <button
+                  onClick={() => setExpanded(true)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                  title="展开编辑器"
+                >
+                  <Maximize2 size={14} />
+                </button>
+                <button
+                  onClick={handleSend}
+                  disabled={!inputValue.trim() || isLoading || !sessionId}
+                  className="p-1.5 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <SendHorizontal size={16} />
+                </button>
+              </div>
+            </div>
           </div>
+          {charCount > 0 && (
+            <div className="flex justify-end mt-1 pr-1">
+              <span className={`text-xs ${charColorClass}`}>{charCount}/{MAX_CHARS}</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Expanded editor overlay */}
+      {expanded && (
+        <div className="absolute inset-0 z-20 bg-white flex flex-col">
+          <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100">
+            <span className="text-sm font-medium text-gray-700">编辑消息</span>
+            <span className="text-xs text-gray-400">
+              Esc 收起 · {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Enter 发送
+            </span>
+          </div>
+          <div className="flex-1 p-4 sm:p-6 min-h-0">
+            <textarea
+              ref={expandedTextareaRef}
+              value={inputValue}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onKeyDown={handleExpandedKeyDown}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={() => { composingRef.current = false; }}
+              placeholder={"支持 Markdown 格式：**粗体** `代码` ```代码块```\n\nEnter 换行 · Ctrl+Enter 发送"}
+              className="w-full h-full resize-none bg-gray-50 rounded-xl border border-gray-200 p-4 text-sm outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+            />
+          </div>
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100">
+            <span className={`text-xs ${charColorClass}`}>{charCount}/{MAX_CHARS}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setExpanded(false)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Minimize2 size={14} />
+                收起
+              </button>
+              <button
+                onClick={handleSend}
+                disabled={!inputValue.trim() || isLoading || !sessionId}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <SendHorizontal size={14} />
+                发送
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
