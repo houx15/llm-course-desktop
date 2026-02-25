@@ -3214,6 +3214,7 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   let ptyDataCount = 0;
   ptyProcess.onData((data) => {
+    if (entry.replaced) return; // Don't send data from a replaced PTY to the renderer
     ptyDataCount++;
     if (ptyDataCount <= 5) {
       console.log(`[PTY DATA #${ptyDataCount}] chapterId=${rawChapterId} len=${data.length} data=${JSON.stringify(data).slice(0, 120)}`);
