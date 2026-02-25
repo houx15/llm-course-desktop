@@ -143,6 +143,7 @@ async function cleanupOrphanedJupyterProcesses() {
 
 // Kill whatever process currently holds a given port (used to reclaim port 8000 for sidecar)
 async function killProcessOnPort(port) {
+  console.log(`[startup] killProcessOnPort(${port}) — checking...`);
   let killed = false;
   try {
     if (process.platform === 'win32') {
@@ -156,20 +157,24 @@ async function killProcessOnPort(port) {
         }
       }
       for (const pid of pids) {
+        console.log(`[startup] killProcessOnPort: killing PID ${pid} (SIGKILL)`);
         try { process.kill(pid, 'SIGKILL'); killed = true; } catch { /* ignore */ }
       }
     } else {
       const out = await runCommand('lsof', ['-ti', `:${port}`]);
-      for (const pidStr of out.split('\n').filter(Boolean)) {
+      const foundPids = out.split('\n').filter(Boolean);
+      console.log(`[startup] killProcessOnPort: lsof found PIDs: ${foundPids.length ? foundPids.join(', ') : '(none)'}`);
+      for (const pidStr of foundPids) {
         const pid = parseInt(pidStr, 10);
         if (!isNaN(pid) && pid > 0) {
+          console.log(`[startup] killProcessOnPort: killing PID ${pid} (SIGKILL)`);
           try { process.kill(pid, 'SIGKILL'); killed = true; } catch { /* ignore */ }
         }
       }
     }
   } catch { /* ignore */ }
   if (killed) {
-    // Wait until the port is actually free (up to 5 seconds)
+    console.log(`[startup] killProcessOnPort: waiting for port ${port} to be free...`);
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
       const free = await new Promise((resolve) => {
@@ -177,9 +182,12 @@ async function killProcessOnPort(port) {
         srv.once('error', () => resolve(false));
         srv.listen(port, '127.0.0.1', () => srv.close(() => resolve(true)));
       });
-      if (free) return;
+      if (free) { console.log(`[startup] killProcessOnPort: port ${port} is free`); return; }
       await new Promise((r) => setTimeout(r, 200));
     }
+    console.warn(`[startup] killProcessOnPort: port ${port} still occupied after 5s!`);
+  } else {
+    console.log(`[startup] killProcessOnPort: no process on port ${port}`);
   }
 }
 
@@ -1098,12 +1106,14 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  console.log(`[quit] before-quit: runtimeProcess PID=${runtimeProcess?.pid || 'none'}`);
   runtimeIntentionalStop = true;
   if (runtimeRestartTimer) {
     clearTimeout(runtimeRestartTimer);
     runtimeRestartTimer = null;
   }
   if (runtimeProcess) {
+    console.log(`[quit] Sending SIGKILL to sidecar PID=${runtimeProcess.pid}`);
     try { runtimeProcess.kill('SIGKILL'); } catch { /* ignore */ }
     runtimeProcess = null;
   }
@@ -2320,7 +2330,7 @@ const stopRuntimeProcess = (intentional = true) => {
   runtimeIntentionalStop = intentional;
   clearRuntimeRestartTimer();
   if (runtimeProcess) {
-    runtimeProcess.kill();
+    try { runtimeProcess.kill('SIGKILL'); } catch { /* ignore */ }
     runtimeProcess = null;
   }
   if (intentional) {
@@ -2433,10 +2443,41 @@ const startRuntimeInternal = async (config, options = {}) => {
   };
 
   // Kill any stale process from a previous session still holding port 8000.
+  console.log('[sidecar] killStaleProcessOnPort(8000) before spawn...');
   await killStaleProcessOnPort(8000);
+
+  // Warm up by importing the sidecar app modules. The first import after a fresh
+  // conda env or after SIGKILL compiles .pyc files, which can take 15-30s and
+  // cause the actual uvicorn spawn to hang silently. Doing this here (with no
+  // timeout pressure) ensures .pyc files are ready before the real spawn.
+  console.log(`[sidecar] Warming up Python imports: ${pythonPath} (cwd: ${runtimeCwd})`);
+  const warmupStart = Date.now();
+  try {
+    // Notify renderer so the progress overlay shows warmup status
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('sidecar:download-progress', {
+        phase: 'warming_up',
+        percent: 98,
+        status: '正在编译 Python 文件...大约30秒',
+      });
+    }
+    const warmupCode = 'import sys; sys.path.insert(0,"."); exec("try:\\n import uvicorn; from app.server.main import app; print(\\"ok\\")\\nexcept Exception as e:\\n print(f\\"warmup-partial: {e}\\")"); ';
+    const warmup = spawn(pythonPath, ['-c', warmupCode], { cwd: runtimeCwd, env, stdio: 'pipe' });
+    let warmupOut = '';
+    warmup.stdout?.on('data', (d) => { warmupOut += d.toString(); });
+    warmup.stderr?.on('data', (d) => { console.log(`[sidecar warmup stderr] ${d.toString().trimEnd()}`); });
+    await new Promise((resolve) => {
+      warmup.on('exit', resolve);
+      warmup.on('error', resolve);
+    });
+    console.log(`[sidecar] Python warm-up done in ${Date.now() - warmupStart}ms: ${warmupOut.trim()}`);
+  } catch (err) {
+    console.warn(`[sidecar] Python warm-up failed: ${err.message}`);
+  }
 
   runtimeStartInProgress = true;
 
+  console.log(`[sidecar] Spawning sidecar: python=${pythonPath}, cwd=${runtimeCwd}, source=${runtimeSource}`);
   runtimeProcess = spawn(
     pythonPath,
     ['-m', 'uvicorn', 'app.server.main:app', '--host', '127.0.0.1', '--port', '8000'],
@@ -2446,6 +2487,7 @@ const startRuntimeInternal = async (config, options = {}) => {
       stdio: 'pipe',
     }
   );
+  console.log(`[sidecar] Spawned PID=${runtimeProcess.pid}, alive=${!runtimeProcess.killed}`);
 
   runtimeLaunchInfo = {
     runtimeSource,
@@ -2464,16 +2506,40 @@ const startRuntimeInternal = async (config, options = {}) => {
     });
   });
 
+  runtimeProcess.on('error', (err) => {
+    console.error(`[sidecar] Spawn error: ${err.message}`);
+  });
+
+  runtimeProcess.stdout?.on('data', (chunk) => {
+    const text = chunk?.toString?.() || '';
+    if (text) console.log(`[sidecar stdout] ${text.trimEnd()}`);
+  });
+
   runtimeProcess.stderr?.on('data', (chunk) => {
     const text = chunk?.toString?.() || '';
     if (!text) return;
+    console.log(`[sidecar stderr] ${text.trimEnd()}`);
     runtimeStderrBuffer = `${runtimeStderrBuffer}${text}`.slice(-8000);
     // Forward sidecar stderr to the renderer so it appears in DevTools console.
     const focusedWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
     focusedWindow?.webContents?.send('runtime:log', { stream: 'stderr', text });
   });
 
-  runtimeProcess.on('exit', () => {
+  // Periodic check: is the process actually alive during health poll?
+  const aliveCheck = setInterval(() => {
+    if (!runtimeProcess) { clearInterval(aliveCheck); return; }
+    try {
+      process.kill(runtimeProcess.pid, 0); // signal 0 = check alive
+      console.log(`[sidecar] alive check: PID ${runtimeProcess.pid} running, stderr=${runtimeStderrBuffer.length} chars`);
+    } catch {
+      console.log(`[sidecar] alive check: PID ${runtimeProcess.pid} is DEAD`);
+      clearInterval(aliveCheck);
+    }
+  }, 3000);
+
+  runtimeProcess.on('exit', (code, signal) => {
+    clearInterval(aliveCheck);
+    console.log(`[sidecar] Process exited: code=${code}, signal=${signal}, intentionalStop=${runtimeIntentionalStop}`);
     const shouldRestart = !runtimeIntentionalStop;
     runtimeProcess = null;
     if (shouldRestart) {
@@ -2496,6 +2562,8 @@ const startRuntimeInternal = async (config, options = {}) => {
   runtimeStartInProgress = false;
 
   if (!preflight.ok) {
+    const processAlive = runtimeProcess && !runtimeProcess.killed;
+    console.error(`[sidecar] Preflight FAILED: phase=${preflight.phase}, reason=${preflight.reason}, processAlive=${processAlive}, stderr=${runtimeStderrBuffer.slice(0, 500)}`);
     stopRuntimeProcess(false);
     return {
       started: false,

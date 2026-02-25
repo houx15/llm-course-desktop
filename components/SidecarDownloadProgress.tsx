@@ -9,6 +9,7 @@ export interface SidecarDownloadState {
     | 'creating_env'
     | 'downloading_sidecar'
     | 'installing_deps'
+    | 'warming_up'
     | 'done'
     | 'error';
   percent: number;
@@ -45,6 +46,7 @@ const phaseLabel: Record<string, string> = {
   creating_env:        '正在创建运行环境...',
   downloading_sidecar: '正在下载学习引擎...',
   installing_deps:     '正在安装依赖包...',
+  warming_up:          '正在编译 Python 文件...大约30秒',
   done:                '准备就绪',
   error:               '出现错误',
 };
