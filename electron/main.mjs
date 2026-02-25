@@ -3213,9 +3213,9 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
     const condaHook = path.join(condaRoot, 'shell', 'condabin', 'conda-hook.ps1');
     if (await pathExists(condaEnvPath) && await pathExists(condaHook)) {
-      // Load conda into PowerShell via the hook, then activate by full path.
-      // Use Invoke-Expression to bypass ExecutionPolicy for this single script.
-      ptyProcess.write(`Invoke-Expression (Get-Content "${condaHook}" -Raw); conda activate "${condaEnvPath}"\r`);
+      // Set ExecutionPolicy to Bypass for this process so the conda hook
+      // (and the Conda.psm1 module it imports) can load without restriction.
+      ptyProcess.write(`Set-ExecutionPolicy Bypass -Scope Process -Force; & "${condaHook}"; conda activate "${condaEnvPath}"\r`);
     }
   } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
