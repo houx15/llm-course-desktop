@@ -1559,40 +1559,43 @@ const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
     withAuth: true,
   });
 
+  let needsDownload = false;
   if (!checkResult.ok) {
-    if (installedVersions.python_runtime) return; // tolerate failure if already installed
-    throw new Error(`Sidecar code check failed (${checkResult.status})`);
-  }
-
-  const allReleases = [
-    ...(checkResult.data?.required || []),
-    ...(checkResult.data?.optional || []),
-  ];
-  const sidecarRelease = allReleases.find((r) => r.bundle_type === 'python_runtime');
-
-  if (!sidecarRelease) {
-    if (installedVersions.python_runtime) return;
-    throw new Error('No sidecar code bundle available from server');
-  }
-
-  // 3. Download and extract the bundle
-  sendProgress('downloading_sidecar', { percent: 56, status: '正在下载学习引擎...' });
-
-  let downloadComplete = false;
-  await installBundleRelease(sidecarRelease, (progress) => {
-    if (!downloadComplete) {
-      const displayPercent = Math.round(56 + (progress.percent / 100) * 12);
-      sendProgress('downloading_sidecar', {
-        percent: displayPercent,
-        bytesDownloaded: progress.bytesDownloaded,
-        totalBytes: progress.totalBytes,
-        status: '正在下载学习引擎...',
-      });
-      if (progress.percent >= 100) downloadComplete = true;
+    if (!installedVersions.python_runtime) {
+      throw new Error(`Sidecar code check failed (${checkResult.status})`);
     }
-  });
+    // tolerate check failure if bundle already installed — skip download
+  } else {
+    const allReleases = [
+      ...(checkResult.data?.required || []),
+      ...(checkResult.data?.optional || []),
+    ];
+    const sidecarRelease = allReleases.find((r) => r.bundle_type === 'python_runtime');
 
-  // 4. Find the installed bundle root in the updated index
+    if (sidecarRelease) {
+      // 3. Download and extract the bundle
+      sendProgress('downloading_sidecar', { percent: 56, status: '正在下载学习引擎...' });
+
+      let downloadComplete = false;
+      await installBundleRelease(sidecarRelease, (progress) => {
+        if (!downloadComplete) {
+          const displayPercent = Math.round(56 + (progress.percent / 100) * 12);
+          sendProgress('downloading_sidecar', {
+            percent: displayPercent,
+            bytesDownloaded: progress.bytesDownloaded,
+            totalBytes: progress.totalBytes,
+            status: '正在下载学习引擎...',
+          });
+          if (progress.percent >= 100) downloadComplete = true;
+        }
+      });
+      needsDownload = true; // fresh download — always re-install deps
+    } else if (!installedVersions.python_runtime) {
+      throw new Error('No sidecar code bundle available from server');
+    }
+  }
+
+  // 4. Find the bundle root from the index (whether freshly downloaded or already present)
   const updatedIndex = await loadIndex();
   const prEntries = Object.entries(updatedIndex?.python_runtime || {}).filter(([, e]) => e?.path);
   if (prEntries.length === 0) {
@@ -1600,7 +1603,12 @@ const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
   }
   const bundleRoot = String(prEntries[0][1].path);
 
-  // 5. pip install requirements into the conda env
+  // 5. pip install requirements into the conda env (idempotent via marker file)
+  const depsMarker = path.join(bundleRoot, '.deps_installed');
+  if (!needsDownload && await pathExists(depsMarker)) {
+    return; // deps already installed for this bundle version
+  }
+
   const requirementsTxt = path.join(bundleRoot, 'requirements.txt');
   if (!await pathExists(requirementsTxt)) {
     throw new Error(`requirements.txt not found in sidecar bundle at ${requirementsTxt}`);
@@ -1613,6 +1621,9 @@ const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
     '--trusted-host', 'mirrors.tuna.tsinghua.edu.cn',
     '--quiet',
   ]);
+
+  // Mark deps as successfully installed so we don't re-run on next startup
+  await fs.writeFile(depsMarker, new Date().toISOString(), 'utf-8');
 
   sendProgress('installing_deps', { percent: 95, status: '正在安装依赖包...' });
 };
