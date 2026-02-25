@@ -68,10 +68,6 @@
     },
     "linux": {
       "icon": "assets/icon.png"
-    },
-    "publish": {
-      "provider": "generic",
-      "url": "${PUBLISH_URL}"
     }
   },
   "dependencies": {

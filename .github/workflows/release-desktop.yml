@@ -63,12 +63,22 @@ jobs:
       - name: Set version in package.json
         run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
 
+      - name: Inject publish config
+        shell: bash
+        run: |
+          cat > electron-builder-publish.yml <<EOF
+          publish:
+            provider: generic
+            url: "${{ needs.prepare.outputs.publish_url }}"
+          EOF
+          echo "Generated electron-builder-publish.yml:"
+          cat electron-builder-publish.yml
+
       - name: Set backend URL
         shell: bash
         run: |
           BACKEND_URL="${{ needs.prepare.outputs.backend_url }}"
           if [ -n "$BACKEND_URL" ]; then
-            # Replace the hardcoded backend URL in main.mjs
             sed -i.bak "s|process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723'|process.env.TUTOR_BACKEND_URL || '${BACKEND_URL}'|" electron/main.mjs
             rm -f electron/main.mjs.bak
             echo "Backend URL set to: ${BACKEND_URL}"
@@ -81,17 +91,14 @@ jobs:
 
       - name: Build Electron (macOS)
         if: matrix.platform == 'mac'
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --config electron-builder-publish.yml --publish never
         env:
-          PUBLISH_URL: ${{ needs.prepare.outputs.publish_url }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
 
       - name: Build Electron (Windows)
         if: matrix.platform == 'win'
-        run: npx electron-builder --win --publish never
-        env:
-          PUBLISH_URL: ${{ needs.prepare.outputs.publish_url }}
+        run: npx electron-builder --win --config electron-builder-publish.yml --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
