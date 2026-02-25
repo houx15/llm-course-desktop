@@ -207,7 +207,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
     setSessionId(targetSessionId);
     const msgs = turnsToMessages(turns);
-    setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+    // Always prepend the initial bot greeting — it's not part of any turn
+    setMessages([{ role: 'model', text: chapter.initialMessage }, ...msgs]);
     if (report) {
       onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
     }
@@ -272,7 +273,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
       companion_response: t.companion_response,
     }));
     const msgs = turnsToMessages(sourceTurns);
-    setMessages(msgs.length > 0 ? msgs : [{ role: 'model', text: chapter.initialMessage }]);
+    // Always prepend the initial bot greeting — it's not part of any turn
+    setMessages([{ role: 'model', text: chapter.initialMessage }, ...msgs]);
     if (report) {
       onRuntimeEvent?.({ type: 'memo_update', phase: 'complete', report });
     }

@@ -1497,24 +1497,39 @@ const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
       await runSubprocess('bash', [installerPath, '-b', '-u', '-p', condaRoot]);
     }
 
-    // Write .condarc to use Tsinghua channels and register envs_dirs.
-    // On Windows with a non-standard install path, conda won't resolve
-    // named environments unless envs_dirs explicitly includes <root>/envs.
-    const envsDirLine = path.join(condaRoot, 'envs').replace(/\\/g, '/');
-    const condarc = [
-      'default_channels:',
-      ...runtimeConfig.conda_channels.map((ch) => `  - ${ch}`),
-      'show_channel_urls: true',
-      'envs_dirs:',
-      `  - ${envsDirLine}`,
-    ].join('\n') + '\n';
-    await fs.writeFile(path.join(condaRoot, '.condarc'), condarc, 'utf8');
+    // Write .condarc with Tsinghua mirror channels on fresh install (macOS).
+    // Windows .condarc (with envs_dirs) is handled by ensureCondaConfig().
+    if (process.platform !== 'win32') {
+      const condarc = [
+        'default_channels:',
+        ...runtimeConfig.conda_channels.map((ch) => `  - ${ch}`),
+        'show_channel_urls: true',
+      ].join('\n') + '\n';
+      await fs.writeFile(path.join(condaRoot, '.condarc'), condarc, 'utf8');
+    }
   } finally {
     await fs.unlink(installerPath).catch(() => {});
   }
 
   sendProgress('installing_conda', { percent: 44, status: '正在安装 Python 环境...' });
   return true; // freshly installed
+};
+
+// Ensure .condarc has correct channels + envs_dirs.  Windows-only fix:
+// conda installed to a non-standard path (C:\knoweia\miniconda) doesn't
+// resolve named environments unless envs_dirs is explicitly set.
+// macOS works fine with default conda config — skip to avoid touching it.
+const ensureCondaConfig = async (condaRoot, runtimeConfig) => {
+  if (process.platform !== 'win32') return;
+  const channels = runtimeConfig?.conda_channels || [];
+  const envsDirLine = path.join(condaRoot, 'envs').replace(/\\/g, '/');
+  const condarc = [
+    ...(channels.length > 0 ? ['default_channels:', ...channels.map((ch) => `  - ${ch}`)] : []),
+    'show_channel_urls: true',
+    'envs_dirs:',
+    `  - ${envsDirLine}`,
+  ].join('\n') + '\n';
+  await fs.writeFile(path.join(condaRoot, '.condarc'), condarc, 'utf8');
 };
 
 const ensureCondaEnv = async (condaRoot, sendProgress) => {
@@ -1669,6 +1684,9 @@ ipcMain.handle('sidecar:ensureReady', async () => {
 
       // Stage 1: Miniconda installation (skipped if already present)
       const condaInstalled = await ensureCondaInstalled(condaRoot, runtimeConfig, sendProgress);
+
+      // Ensure .condarc is up-to-date (channels + envs_dirs) every launch
+      await ensureCondaConfig(condaRoot, runtimeConfig);
 
       // Stage 2: Conda sidecar env (skipped if already present)
       const envCreated = await ensureCondaEnv(condaRoot, sendProgress);
