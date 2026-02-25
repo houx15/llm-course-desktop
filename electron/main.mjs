@@ -167,9 +167,18 @@ async function killProcessOnPort(port) {
       }
     }
   } catch { /* ignore */ }
-  // Wait for port to be released after killing
   if (killed) {
-    await new Promise((r) => setTimeout(r, 500));
+    // Wait until the port is actually free (up to 5 seconds)
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const free = await new Promise((resolve) => {
+        const srv = net.createServer();
+        srv.once('error', () => resolve(false));
+        srv.listen(port, '127.0.0.1', () => srv.close(() => resolve(true)));
+      });
+      if (free) return;
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
 }
 
@@ -1021,6 +1030,7 @@ const setupAutoUpdater = () => {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = true; // enable dev-to-dev upgrades (e.g. 0.1.0-dev.6 → 0.1.0-dev.8)
   autoUpdater.logger = null; // suppress default logging
 
   autoUpdater.on('update-available', (info) => {
@@ -1377,7 +1387,7 @@ const getCondaBin = (condaRoot) => process.platform === 'win32'
   : path.join(condaRoot, 'bin', 'conda');
 
 const getCondaEnvPython = (condaRoot) => process.platform === 'win32'
-  ? path.join(condaRoot, 'envs', 'sidecar', 'Scripts', 'python.exe')
+  ? path.join(condaRoot, 'envs', 'sidecar', 'python.exe')
   : path.join(condaRoot, 'envs', 'sidecar', 'bin', 'python3');
 
 const getCondaEnvPip = (condaRoot) => process.platform === 'win32'
