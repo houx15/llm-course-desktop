@@ -72,7 +72,9 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({ chapterId, visible }) => 
 
     offExitRef.current = window.tutorApp.onTerminalExit((payload) => {
       if (payload.chapterId !== activeChapter) return;
-      term.write('\r\n[Process exited]\r\n');
+      const code = payload.exitCode ?? '?';
+      const sig = payload.signal != null ? `, signal=${payload.signal}` : '';
+      term.write(`\r\n[Process exited: code=${code}${sig}]\r\n`);
       spawnedChapterRef.current = '';
     });
 

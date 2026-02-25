@@ -3176,15 +3176,20 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
   const condaShExists = await pathExists(condaSh);
 
-  // On Windows, -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy).
+  // On Windows, -NoExit keeps PowerShell alive as an interactive session,
+  // -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy).
   // On macOS/Linux, -l starts a login shell.
-  const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-NoLogo'] : ['-l'];
+  const shellArgs = process.platform === 'win32' ? ['-NoExit', '-NoProfile', '-NoLogo'] : ['-l'];
 
   // VS Code uses the shell basename as the PTY name on Windows (required by
   // ConPTY for proper input handling), and 'xterm-256color' on other platforms.
   const ptyName = process.platform === 'win32'
     ? path.basename(shellName)
     : 'xterm-256color';
+
+  // Verify cwd exists before spawn
+  const cwdExists = await pathExists(chapterDir);
+  console.log(`[PTY SPAWN] shell=${shellName} args=${JSON.stringify(shellArgs)} cwd=${chapterDir} cwdExists=${cwdExists}`);
 
   // Keep spawn env unmodified to avoid Windows env var casing issues
   // (e.g. Path vs PATH duplication) that can crash the child process.
@@ -3206,6 +3211,7 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   });
 
   ptyProcess.onExit(({ exitCode, signal }) => {
+    console.error(`[PTY EXIT] chapterId=${rawChapterId} exitCode=${exitCode} signal=${signal} shell=${shellName} args=${JSON.stringify(shellArgs)} cwd=${chapterDir}`);
     ptyByChapter.delete(chapterSegment);
     try { entry.sender.send('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
   });
