@@ -3210,11 +3210,12 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   // Auto-activate conda env if available
   if (process.platform === 'win32') {
-    // Set PATH directly — avoids running .ps1 scripts that may be blocked
     const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
-    if (await pathExists(condaEnvPath)) {
-      const scriptsDir = path.join(condaEnvPath, 'Scripts');
-      ptyProcess.write(`$env:PATH = "${condaEnvPath};${scriptsDir};$env:PATH"\r`);
+    const condaHook = path.join(condaRoot, 'shell', 'condabin', 'conda-hook.ps1');
+    if (await pathExists(condaEnvPath) && await pathExists(condaHook)) {
+      // Load conda into PowerShell via the hook, then activate by full path.
+      // Use Invoke-Expression to bypass ExecutionPolicy for this single script.
+      ptyProcess.write(`Invoke-Expression (Get-Content "${condaHook}" -Raw); conda activate "${condaEnvPath}"\r`);
     }
   } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
