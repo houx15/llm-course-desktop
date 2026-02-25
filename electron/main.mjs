@@ -3158,9 +3158,12 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const { chapterSegment, chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
   await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
 
-  // Kill existing PTY for this chapter
+  // Kill existing PTY for this chapter (mark as replaced so onExit won't
+  // send an exit event to the renderer — avoids false "Process exited" when
+  // React StrictMode double-mounts effects in dev).
   const existing = ptyByChapter.get(chapterSegment);
   if (existing) {
+    existing.replaced = true;
     try { existing.pty.kill(); } catch {}
     ptyByChapter.delete(chapterSegment);
   }
@@ -3216,8 +3219,9 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   });
 
   ptyProcess.onExit(({ exitCode, signal }) => {
-    console.error(`[PTY EXIT] chapterId=${rawChapterId} exitCode=${exitCode} signal=${signal} shell=${shellName} args=${JSON.stringify(shellArgs)} cwd=${chapterDir}`);
+    console.log(`[PTY EXIT] chapterId=${rawChapterId} exitCode=${exitCode} signal=${signal} replaced=${!!entry.replaced}`);
     ptyByChapter.delete(chapterSegment);
+    if (entry.replaced) return; // Silently ignore — a new PTY was spawned for this chapter
     try { entry.sender.send('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
   });
 

@@ -83,19 +83,23 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({ chapterId, visible }) => 
       try { fitAddon.fit(); } catch {}
     }, 80);
 
-    // Spawn PTY
+    // Spawn PTY. Use a cancelled flag to handle React StrictMode double-mount:
+    // if the effect is cleaned up before spawnTerminal resolves, don't update refs.
+    let cancelled = false;
     const cols = term.cols || 80;
     const rows = term.rows || 24;
     window.tutorApp.spawnTerminal({ chapterId: activeChapter, cols, rows })
       .then(() => {
-        spawnedChapterRef.current = activeChapter;
+        if (!cancelled) spawnedChapterRef.current = activeChapter;
       })
       .catch((err: Error) => {
+        if (cancelled) return;
         setError(err.message || 'Failed to spawn terminal');
         term.write(`\r\n[Error: ${err.message}]\r\n`);
       });
 
     return () => {
+      cancelled = true;
       inputDisposable.dispose();
       offDataRef.current?.();
       offExitRef.current?.();
