@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import tar from 'tar';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { createRequire } from 'module';
 import os from 'os';
 import { createHash, randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'crypto';
@@ -2189,6 +2189,21 @@ const clearRuntimeRestartTimer = () => {
   }
 };
 
+const killStaleProcessOnPort = async (port) => {
+  try {
+    const pids = execSync(`lsof -ti:${port}`, { encoding: 'utf8', timeout: 3000 })
+      .trim()
+      .split('\n')
+      .filter(Boolean);
+    for (const pid of pids) {
+      try { process.kill(Number(pid), 'SIGKILL'); } catch { /* already dead */ }
+    }
+    if (pids.length) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  } catch { /* lsof returns non-zero when no process found — expected */ }
+};
+
 const stopRuntimeProcess = (intentional = true) => {
   runtimeIntentionalStop = intentional;
   clearRuntimeRestartTimer();
@@ -2304,6 +2319,9 @@ const startRuntimeInternal = async (config, options = {}) => {
     TUTOR_ROOT: tutorRoot,
     LOG_FILE: path.join(sessionsRoot, 'sidecar.log'),
   };
+
+  // Kill any stale process from a previous session still holding port 8000.
+  await killStaleProcessOnPort(8000);
 
   runtimeProcess = spawn(
     pythonPath,
