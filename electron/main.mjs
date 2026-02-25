@@ -2993,6 +2993,7 @@ ipcMain.handle('code:execute', async (event, payload) => {
       ...process.env,
       ...envPatch,
       PYTHONUNBUFFERED: '1',
+      PYTHONIOENCODING: 'utf-8',
       TUTOR_CHAPTER_ID: chapterId,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -3162,6 +3163,9 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     rows,
     cwd: chapterDir,
     env: { ...process.env, TERM: 'xterm-256color' },
+    // ConPTY's console_list_agent crashes with "AttachConsole failed" in Electron
+    // on Windows.  Fall back to the stable WinPTY backend.
+    ...(process.platform === 'win32' ? { useConpty: false } : {}),
   });
 
   const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender };
@@ -3178,10 +3182,11 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   // Auto-activate conda env if available
   if (process.platform === 'win32') {
-    const condaBat = path.join(condaRoot, 'Scripts', 'activate.bat');
+    // Use condabin\conda.bat which properly resolves env names
+    const condaBat = path.join(condaRoot, 'condabin', 'conda.bat');
     const condaBatExists = await pathExists(condaBat);
     if (condaBatExists) {
-      ptyProcess.write(`"${condaBat}" sidecar\r`);
+      ptyProcess.write(`"${condaBat}" activate sidecar\r`);
     }
   } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
