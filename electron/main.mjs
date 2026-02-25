@@ -3176,9 +3176,12 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
   const condaShExists = await pathExists(condaSh);
 
-  // On Windows, -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy).
+  // On Windows, -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy),
+  // and -ExecutionPolicy Bypass allows conda's .ps1 hook & module to load.
   // On macOS/Linux, -l starts a login shell.
-  const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-NoLogo'] : ['-l'];
+  const shellArgs = process.platform === 'win32'
+    ? ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass']
+    : ['-l'];
 
   // VS Code uses the shell basename as the PTY name on Windows (required by
   // ConPTY for proper input handling), and 'xterm-256color' on other platforms.
@@ -3213,9 +3216,9 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
     const condaHook = path.join(condaRoot, 'shell', 'condabin', 'conda-hook.ps1');
     if (await pathExists(condaEnvPath) && await pathExists(condaHook)) {
-      // Set ExecutionPolicy to Bypass for this process so the conda hook
-      // (and the Conda.psm1 module it imports) can load without restriction.
-      ptyProcess.write(`Set-ExecutionPolicy Bypass -Scope Process -Force; & "${condaHook}"; conda activate "${condaEnvPath}"\r`);
+      // PowerShell was launched with -ExecutionPolicy Bypass, so the hook
+      // and its Conda.psm1 import will load without restriction.
+      ptyProcess.write(`& "${condaHook}"; conda activate "${condaEnvPath}"\r`);
     }
   } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
