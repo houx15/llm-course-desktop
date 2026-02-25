@@ -3176,12 +3176,9 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const condaSh = path.join(condaRoot, 'etc', 'profile.d', 'conda.sh');
   const condaShExists = await pathExists(condaSh);
 
-  // On Windows, -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy),
-  // and -ExecutionPolicy Bypass allows conda's .ps1 hook & module to load.
+  // On Windows, -NoProfile skips profile.ps1 (often blocked by ExecutionPolicy).
   // On macOS/Linux, -l starts a login shell.
-  const shellArgs = process.platform === 'win32'
-    ? ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass']
-    : ['-l'];
+  const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-NoLogo'] : ['-l'];
 
   // VS Code uses the shell basename as the PTY name on Windows (required by
   // ConPTY for proper input handling), and 'xterm-256color' on other platforms.
@@ -3189,12 +3186,44 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     ? path.basename(shellName)
     : 'xterm-256color';
 
+  // On Windows, pre-compute conda env activation in the spawn env so we don't
+  // need to run any .ps1 scripts (blocked by ExecutionPolicy on many systems).
+  let spawnEnv = { ...process.env, TERM: 'xterm-256color' };
+  if (process.platform === 'win32') {
+    const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
+    if (await pathExists(condaEnvPath)) {
+      const condaBin = path.join(condaRoot, 'condabin');
+      const condaExe = path.join(condaRoot, 'Scripts', 'conda.exe');
+      const pythonExe = path.join(condaEnvPath, 'python.exe');
+      // Prepend all directories that `conda activate` normally adds on Windows
+      const condaPaths = [
+        condaEnvPath,
+        path.join(condaEnvPath, 'Library', 'mingw-w64', 'bin'),
+        path.join(condaEnvPath, 'Library', 'usr', 'bin'),
+        path.join(condaEnvPath, 'Library', 'bin'),
+        path.join(condaEnvPath, 'Scripts'),
+        path.join(condaEnvPath, 'bin'),
+        condaBin,
+      ].join(';');
+      spawnEnv = {
+        ...spawnEnv,
+        PATH: `${condaPaths};${spawnEnv.PATH || ''}`,
+        CONDA_PREFIX: condaEnvPath,
+        CONDA_DEFAULT_ENV: 'sidecar',
+        CONDA_SHLVL: '1',
+        CONDA_PROMPT_MODIFIER: '(sidecar) ',
+        ...(await pathExists(condaExe) ? { CONDA_EXE: condaExe } : {}),
+        ...(await pathExists(pythonExe) ? { CONDA_PYTHON_EXE: pythonExe } : {}),
+      };
+    }
+  }
+
   const ptyProcess = nodePty.spawn(shellName, shellArgs, {
     name: ptyName,
     cols,
     rows,
     cwd: chapterDir,
-    env: { ...process.env, TERM: 'xterm-256color' },
+    env: spawnEnv,
     // Enable ConPTY on Windows (same as VS Code's approach)
     ...(process.platform === 'win32' ? { useConpty: true, conptyInheritCursor: true } : {}),
   });
@@ -3211,16 +3240,8 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     try { entry.sender.send('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
   });
 
-  // Auto-activate conda env if available
-  if (process.platform === 'win32') {
-    const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
-    const condaHook = path.join(condaRoot, 'shell', 'condabin', 'conda-hook.ps1');
-    if (await pathExists(condaEnvPath) && await pathExists(condaHook)) {
-      // PowerShell was launched with -ExecutionPolicy Bypass, so the hook
-      // and its Conda.psm1 import will load without restriction.
-      ptyProcess.write(`& "${condaHook}"; conda activate "${condaEnvPath}"\r`);
-    }
-  } else if (condaShExists) {
+  // Auto-activate conda env on macOS/Linux (Windows is handled via spawn env above)
+  if (process.platform !== 'win32' && condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
   }
 
