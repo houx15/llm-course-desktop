@@ -60,8 +60,13 @@ const CodeBlock: React.FC<{ code: string; language: string }> = ({ code, languag
           margin: 0,
           borderRadius: 0,
           fontSize: '0.875rem',
-          fontFamily: "'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace",
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
           overflowX: 'auto',
+        }}
+        codeTagProps={{
+          style: {
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          },
         }}
       />
     </div>
@@ -648,7 +653,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
         <code
           {...rest}
           className="bg-gray-100 px-1.5 py-0.5 rounded text-pink-600 text-[0.875rem]"
-          style={{ fontFamily: "'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace" }}
+          style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}
         >
           {children}
         </code>
