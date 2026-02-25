@@ -2569,7 +2569,6 @@ const startRuntimeInternal = async (config, options = {}) => {
     if (!runtimeProcess) { clearInterval(aliveCheck); return; }
     try {
       process.kill(runtimeProcess.pid, 0); // signal 0 = check alive
-      console.log(`[sidecar] alive check: PID ${runtimeProcess.pid} running, stderr=${runtimeStderrBuffer.length} chars`);
     } catch {
       console.log(`[sidecar] alive check: PID ${runtimeProcess.pid} is DEAD`);
       clearInterval(aliveCheck);
@@ -3213,7 +3212,12 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender };
   ptyByChapter.set(chapterSegment, entry);
 
+  let ptyDataCount = 0;
   ptyProcess.onData((data) => {
+    ptyDataCount++;
+    if (ptyDataCount <= 5) {
+      console.log(`[PTY DATA #${ptyDataCount}] chapterId=${rawChapterId} len=${data.length} data=${JSON.stringify(data).slice(0, 120)}`);
+    }
     try { entry.sender.send('pty:data', { chapterId: rawChapterId, data }); } catch {}
   });
 
@@ -3255,8 +3259,10 @@ ipcMain.handle('pty:write', async (_event, payload) => {
   const data = String(payload?.data || '');
   const chapterSegment = sanitizeSegment(chapterId);
   const entry = ptyByChapter.get(chapterSegment);
+  const found = !!entry;
   if (entry) entry.pty.write(data);
-  return { ok: !!entry };
+  console.log(`[PTY WRITE] chapterId=${chapterId} segment=${chapterSegment} found=${found} dataLen=${data.length} data=${JSON.stringify(data).slice(0, 80)}`);
+  return { ok: found };
 });
 
 ipcMain.handle('pty:resize', async (_event, payload) => {

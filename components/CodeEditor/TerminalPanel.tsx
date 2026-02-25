@@ -61,6 +61,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({ chapterId, visible }) => 
 
     // Relay user keystrokes to PTY
     const inputDisposable = term.onData((data) => {
+      console.log(`[TERM INPUT] chapterId=${activeChapter} data=${JSON.stringify(data).slice(0, 60)}`);
       window.tutorApp?.writeTerminal({ chapterId: activeChapter, data });
     });
 
@@ -81,6 +82,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({ chapterId, visible }) => 
     // Fit after DOM settles
     setTimeout(() => {
       try { fitAddon.fit(); } catch {}
+      console.log(`[TERM FIT] cols=${term.cols} rows=${term.rows}`);
     }, 80);
 
     // Spawn PTY. Use a cancelled flag to handle React StrictMode double-mount:
@@ -88,6 +90,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({ chapterId, visible }) => 
     let cancelled = false;
     const cols = term.cols || 80;
     const rows = term.rows || 24;
+    console.log(`[TERM SPAWN] chapterId=${activeChapter} cols=${cols} rows=${rows}`);
     window.tutorApp.spawnTerminal({ chapterId: activeChapter, cols, rows })
       .then(() => {
         if (!cancelled) spawnedChapterRef.current = activeChapter;
