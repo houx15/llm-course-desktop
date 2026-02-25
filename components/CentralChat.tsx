@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Message, Chapter } from '../types';
 import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManager';
 import { syncQueue } from '../services/syncQueue';
 import { fetchSessionState, fetchSessionStateById, listWorkspaceSubmittedFiles } from '../services/backendClient';
 import { codeWorkspace } from '../services/codeWorkspace';
-import { Bot, User, SendHorizontal, Loader2, Terminal, Maximize2, Minimize2 } from 'lucide-react';
+import { Bot, User, SendHorizontal, Loader2, Terminal, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -30,6 +30,43 @@ interface CentralChatProps {
 }
 
 const MAX_CHARS = 5000;
+
+const CodeBlock: React.FC<{ code: string; language: string }> = ({ code, language }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <div className="relative group/code my-3 rounded-lg border border-gray-200 overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border-b border-gray-200">
+        <span className="text-xs text-gray-400">{language}</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-400 hover:text-gray-700 rounded transition-colors"
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? '已复制' : '复制'}
+        </button>
+      </div>
+      <SyntaxHighlighter
+        children={code}
+        style={vs}
+        language={language}
+        PreTag="div"
+        customStyle={{
+          margin: 0,
+          borderRadius: 0,
+          fontSize: '0.875rem',
+          fontFamily: "'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace",
+          overflowX: 'auto',
+        }}
+      />
+    </div>
+  );
+};
 
 const CentralChat: React.FC<CentralChatProps> = ({
   chapter,
@@ -595,6 +632,30 @@ const CentralChat: React.FC<CentralChatProps> = ({
     }
   };
 
+  const markdownComponents = useMemo(() => ({
+    code(props: any) {
+      const { className, children, ...rest } = props;
+      const match = /language-(\w+)/.exec(className || '');
+      const rawCode = String(children).replace(/\n$/, '');
+      const language = match?.[1] || 'text';
+      const isBlock = !!match || rawCode.includes('\n');
+
+      if (isBlock) {
+        return <CodeBlock code={rawCode} language={language} />;
+      }
+
+      return (
+        <code
+          {...rest}
+          className="bg-gray-100 px-1.5 py-0.5 rounded text-pink-600 text-[0.875rem]"
+          style={{ fontFamily: "'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace" }}
+        >
+          {children}
+        </code>
+      );
+    },
+  }), []);
+
   // Show spinner while checking for existing session
   if (isInitializing) {
     return (
@@ -677,56 +738,20 @@ const CentralChat: React.FC<CentralChatProps> = ({
                 {msg.role === 'user' ? <User size={18} /> : <Bot size={20} />}
               </div>
 
-              <div className={`flex flex-col max-w-[85%] lg:max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div className={`flex flex-col min-w-0 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <div
-                  className={`p-4 sm:p-5 rounded-2xl shadow-sm overflow-hidden ${
+                  className={`p-4 sm:p-5 rounded-2xl shadow-sm min-w-0 max-w-full ${
                     msg.role === 'user' ? 'bg-gray-100 text-gray-900 rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none shadow-md'
                   }`}
                 >
-                  {msg.role === 'user' ? (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
-                  ) : (
-                    <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent prose-ul:my-2 prose-li:my-0.5">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          code(props: any) {
-                            const { className, children, ...rest } = props;
-                            const match = /language-(\w+)/.exec(className || '');
-                            const rawCode = String(children).replace(/\n$/, '');
-                            const language = match?.[1] || 'text';
-                            const isBlock = !!match || rawCode.includes('\n');
-
-                            if (isBlock) {
-                              return (
-                                <div className="relative group/code">
-                                  <SyntaxHighlighter
-                                    {...rest}
-                                    children={rawCode}
-                                    style={vs}
-                                    language={language}
-                                    PreTag="div"
-                                    customStyle={{ margin: '1em 0', borderRadius: '0.5rem', fontSize: '0.9em' }}
-                                  />
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <code
-                                {...rest}
-                                className="bg-gray-100 px-1 py-0.5 rounded font-mono text-pink-600 text-[0.85em]"
-                              >
-                                {children}
-                              </code>
-                            );
-                          },
-                        }}
-                      >
-                        {msg.text}
-                      </ReactMarkdown>
-                    </div>
-                  )}
+                  <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent prose-pre:max-w-full prose-ul:my-2 prose-li:my-0.5" style={{ overflowWrap: 'anywhere' }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={markdownComponents}
+                    >
+                      {msg.text}
+                    </ReactMarkdown>
+                  </div>
 
                   {hasCodeBlock && onStartCoding && (
                     <div className="mt-3 pt-3 border-t border-gray-100">

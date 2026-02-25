@@ -52,6 +52,7 @@ let refreshPromise = null;
 let runtimeStderrBuffer = '';
 let runtimeStartConfig = null;
 let runtimeIntentionalStop = false;
+let runtimeStartInProgress = false;
 let runtimeRestartTimer = null;
 let runtimeAutoRestartAttempts = 0;
 const MAX_RUNTIME_AUTO_RESTART = 2;
@@ -1103,7 +1104,7 @@ app.on('before-quit', () => {
     runtimeRestartTimer = null;
   }
   if (runtimeProcess) {
-    runtimeProcess.kill();
+    try { runtimeProcess.kill('SIGKILL'); } catch { /* ignore */ }
     runtimeProcess = null;
   }
   for (const chapterSegment of codeExecutionByChapter.keys()) {
@@ -2301,7 +2302,17 @@ const killStaleProcessOnPort = async (port) => {
     }
   } catch { /* command fails when no process found — expected */ }
   if (killed) {
-    await new Promise((r) => setTimeout(r, 500));
+    // Wait until the port is actually free (up to 5 seconds)
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const free = await new Promise((resolve) => {
+        const srv = net.createServer();
+        srv.once('error', () => resolve(false));
+        srv.listen(port, '127.0.0.1', () => srv.close(() => resolve(true)));
+      });
+      if (free) return;
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
 };
 
@@ -2318,7 +2329,7 @@ const stopRuntimeProcess = (intentional = true) => {
 };
 
 const scheduleRuntimeAutoRestart = () => {
-  if (!runtimeStartConfig || runtimeIntentionalStop) {
+  if (!runtimeStartConfig || runtimeIntentionalStop || runtimeStartInProgress) {
     return;
   }
   if (runtimeAutoRestartAttempts >= MAX_RUNTIME_AUTO_RESTART) {
@@ -2424,6 +2435,8 @@ const startRuntimeInternal = async (config, options = {}) => {
   // Kill any stale process from a previous session still holding port 8000.
   await killStaleProcessOnPort(8000);
 
+  runtimeStartInProgress = true;
+
   runtimeProcess = spawn(
     pythonPath,
     ['-m', 'uvicorn', 'app.server.main:app', '--host', '127.0.0.1', '--port', '8000'],
@@ -2441,6 +2454,16 @@ const startRuntimeInternal = async (config, options = {}) => {
     pythonPath,
   };
   runtimeStderrBuffer = '';
+
+  // Track early process death so we can fail fast instead of waiting 12s.
+  let earlyExitCode = null;
+  const earlyExitPromise = new Promise((resolve) => {
+    runtimeProcess?.on('exit', (code) => {
+      earlyExitCode = code;
+      resolve();
+    });
+  });
+
   runtimeProcess.stderr?.on('data', (chunk) => {
     const text = chunk?.toString?.() || '';
     if (!text) return;
@@ -2458,7 +2481,20 @@ const startRuntimeInternal = async (config, options = {}) => {
     }
   });
 
-  const preflight = await waitForSidecarPreflight(SIDECAR_BASE_URL, 12000);
+  // Race the health check against early process death.
+  // If the sidecar crashes immediately (e.g. port in use, import error),
+  // fail fast instead of polling health for the full 12 seconds.
+  const preflight = await Promise.race([
+    waitForSidecarPreflight(SIDECAR_BASE_URL, 12000),
+    earlyExitPromise.then(() => ({
+      ok: false,
+      phase: 'crash',
+      reason: `Sidecar process exited immediately (code ${earlyExitCode}). Check stderr for details.`,
+    })),
+  ]);
+
+  runtimeStartInProgress = false;
+
   if (!preflight.ok) {
     stopRuntimeProcess(false);
     return {
