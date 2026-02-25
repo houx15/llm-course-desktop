@@ -91,13 +91,18 @@ jobs:
 
       - name: Build Electron (macOS)
         if: matrix.platform == 'mac'
-        run: npx electron-builder --mac --publish never
+        run: |
+          npm config delete electron_mirror 2>/dev/null || true
+          npx electron-builder --mac --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          ELECTRON_MIRROR: ""
 
       - name: Build Electron (Windows)
         if: matrix.platform == 'win'
         run: npx electron-builder --win --publish never
+        env:
+          ELECTRON_MIRROR: ""
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
