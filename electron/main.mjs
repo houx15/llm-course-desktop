@@ -3166,9 +3166,10 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
   // Resolve shell — Electron may not inherit SHELL when launched from Dock
   let shellName, shellArgs;
   if (process.platform === 'win32') {
-    // Use cmd.exe on Windows — PowerShell often blocks scripts via ExecutionPolicy
-    shellName = process.env.COMSPEC || 'cmd.exe';
-    shellArgs = [];
+    // PowerShell with -NoProfile (skip profile.ps1 that may be blocked by
+    // ExecutionPolicy) and -ExecutionPolicy Bypass for conda activation.
+    shellName = 'powershell.exe';
+    shellArgs = ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass'];
   } else {
     shellName = process.env.SHELL || '/bin/zsh';
     if (!(await pathExists(shellName))) shellName = '/bin/zsh';
@@ -3202,11 +3203,11 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   // Auto-activate conda env if available
   if (process.platform === 'win32') {
-    // Activate by full path — more reliable than by name on Windows
+    // Activate conda in PowerShell via the hook script, then activate env by path
     const condaEnvPath = path.join(condaRoot, 'envs', 'sidecar');
-    const condaBat = path.join(condaRoot, 'condabin', 'conda.bat');
-    if (await pathExists(condaBat) && await pathExists(condaEnvPath)) {
-      ptyProcess.write(`"${condaBat}" activate "${condaEnvPath}"\r`);
+    const condaHook = path.join(condaRoot, 'shell', 'condabin', 'conda-hook.ps1');
+    if (await pathExists(condaHook) && await pathExists(condaEnvPath)) {
+      ptyProcess.write(`& "${condaHook}"; conda activate "${condaEnvPath}"\r`);
     }
   } else if (condaShExists) {
     ptyProcess.write(`source "${condaSh}" && conda activate sidecar 2>/dev/null\r`);
