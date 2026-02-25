@@ -3186,9 +3186,6 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
     rows,
     cwd: chapterDir,
     env: { ...process.env, TERM: 'xterm-256color' },
-    // ConPTY's console_list_agent crashes with "AttachConsole failed" in Electron
-    // on Windows.  Fall back to the stable WinPTY backend.
-    ...(process.platform === 'win32' ? { useConpty: false } : {}),
   });
 
   const entry = { pty: ptyProcess, chapterId: rawChapterId, sender: event.sender };
