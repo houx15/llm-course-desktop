@@ -4,6 +4,23 @@ contextBridge.exposeInMainWorld('tutorApp', {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
+  onUpdateAvailable: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('app-update:available', listener);
+    return () => ipcRenderer.removeListener('app-update:available', listener);
+  },
+  onUpdateDownloadProgress: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('app-update:download-progress', listener);
+    return () => ipcRenderer.removeListener('app-update:download-progress', listener);
+  },
+  onUpdateDownloaded: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('app-update:downloaded', listener);
+    return () => ipcRenderer.removeListener('app-update:downloaded', listener);
+  },
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),

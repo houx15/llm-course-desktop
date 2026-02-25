@@ -1,0 +1,179 @@
+name: Release Desktop
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      environment: ${{ steps.meta.outputs.environment }}
+      publish_url: ${{ steps.meta.outputs.publish_url }}
+      backend_url: ${{ steps.meta.outputs.backend_url }}
+    steps:
+      - name: Parse tag metadata
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"          # e.g. v0.1.0 or v0.1.0-dev.1
+          VERSION="${TAG#v}"                # strip leading 'v'
+
+          if [[ "$TAG" == *"-dev"* ]]; then
+            echo "environment=dev" >> "$GITHUB_OUTPUT"
+            echo "publish_url=${{ secrets.OSS_PUBLISH_URL_DEV }}" >> "$GITHUB_OUTPUT"
+            echo "backend_url=${{ secrets.BACKEND_URL_DEV }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=prod" >> "$GITHUB_OUTPUT"
+            echo "publish_url=${{ secrets.OSS_PUBLISH_URL_PROD }}" >> "$GITHUB_OUTPUT"
+            echo "backend_url=${{ secrets.BACKEND_URL_PROD }}" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Tag: ${TAG}, Version: ${VERSION}"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set version in package.json
+        run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Set backend URL
+        shell: bash
+        run: |
+          BACKEND_URL="${{ needs.prepare.outputs.backend_url }}"
+          if [ -n "$BACKEND_URL" ]; then
+            # Replace the hardcoded backend URL in main.mjs
+            sed -i.bak "s|process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723'|process.env.TUTOR_BACKEND_URL || '${BACKEND_URL}'|" electron/main.mjs
+            rm -f electron/main.mjs.bak
+            echo "Backend URL set to: ${BACKEND_URL}"
+          else
+            echo "No BACKEND_URL secret set, keeping default"
+          fi
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Build Electron (macOS)
+        if: matrix.platform == 'mac'
+        run: npx electron-builder --mac --publish never
+        env:
+          PUBLISH_URL: ${{ needs.prepare.outputs.publish_url }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+
+      - name: Build Electron (Windows)
+        if: matrix.platform == 'win'
+        run: npx electron-builder --win --publish never
+        env:
+          PUBLISH_URL: ${{ needs.prepare.outputs.publish_url }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.yml
+            release/*.yaml
+            release/*.blockmap
+          if-no-files-found: error
+
+  upload-to-oss:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find artifacts -type f | sort
+
+      - name: Install aliyun CLI
+        run: |
+          curl -sL https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz | tar xz
+          sudo mv aliyun /usr/local/bin/
+
+      - name: Configure aliyun CLI
+        run: |
+          aliyun configure set \
+            --profile default \
+            --mode AK \
+            --region "${{ secrets.OSS_REGION }}" \
+            --access-key-id "${{ secrets.OSS_ACCESS_KEY_ID }}" \
+            --access-key-secret "${{ secrets.OSS_ACCESS_KEY_SECRET }}"
+
+      - name: Upload to OSS
+        run: |
+          ENV="${{ needs.prepare.outputs.environment }}"
+          BUCKET="${{ secrets.OSS_BUCKET }}"
+          PREFIX="desktop-releases/${ENV}/"
+
+          echo "Uploading to oss://${BUCKET}/${PREFIX} ..."
+
+          for file in artifacts/*; do
+            [ -f "$file" ] || continue
+            BASENAME=$(basename "$file")
+            echo "  Uploading: ${BASENAME}"
+            aliyun oss cp "$file" "oss://${BUCKET}/${PREFIX}${BASENAME}" --force
+          done
+
+          echo "Upload complete!"
+
+      - name: Verify latest-mac.yml exists
+        run: |
+          ENV="${{ needs.prepare.outputs.environment }}"
+          BUCKET="${{ secrets.OSS_BUCKET }}"
+          aliyun oss ls "oss://${BUCKET}/desktop-releases/${ENV}/" | head -20
+
+  github-release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "${{ needs.prepare.outputs.environment == 'dev' && 'Dev ' || '' }}v${{ needs.prepare.outputs.version }}"
+          prerelease: ${{ needs.prepare.outputs.environment == 'dev' }}
+          files: |
+            artifacts/*.dmg
+            artifacts/*.exe
+            artifacts/*.zip
+          generate_release_notes: true

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
@@ -1006,6 +1007,57 @@ const createWindow = async () => {
   });
 };
 
+// ---------------------------------------------------------------------------
+// Auto-updater (electron-updater) — silent download, user-triggered install
+// ---------------------------------------------------------------------------
+const setupAutoUpdater = () => {
+  if (isDev) return; // skip in development
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = null; // suppress default logging
+
+  autoUpdater.on('update-available', (info) => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    win?.webContents?.send('app-update:available', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+    });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    win?.webContents?.send('app-update:download-progress', {
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    win?.webContents?.send('app-update:downloaded', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.warn('[auto-updater] Error:', err?.message || err);
+  });
+
+  // Check for updates on startup (after a brief delay to avoid slowing launch)
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 10_000);
+
+  // Re-check every 4 hours
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 4 * 60 * 60 * 1000);
+};
+
 app.whenReady().then(async () => {
   // Kill any orphaned sidecar (port 8000) and Jupyter processes from a previous crash
   await killProcessOnPort(8000);
@@ -1013,6 +1065,7 @@ app.whenReady().then(async () => {
 
   await migrateLegacyTutorAppData();
   createWindow();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1048,6 +1101,18 @@ app.on('before-quit', () => {
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
 ipcMain.handle('app:relaunch', () => { app.relaunch(); app.quit(); });
+ipcMain.handle('app:checkForUpdates', async () => {
+  if (isDev) return { updateAvailable: false };
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { updateAvailable: !!result?.updateInfo, version: result?.updateInfo?.version };
+  } catch {
+    return { updateAvailable: false };
+  }
+});
+ipcMain.handle('app:installUpdate', () => {
+  autoUpdater.quitAndInstall(false, true);
+});
 ipcMain.handle('app:openExternal', async (_event, url) => {
   if (typeof url === 'string' && url.length > 0) {
     await shell.openExternal(url);

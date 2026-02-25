@@ -19,6 +19,7 @@ Core integration is complete:
 - Bundle update/install uses backend check APIs and checksum verification.
 - **Miniconda-based sidecar runtime**: on first launch the app automatically downloads Miniconda from Tsinghua mirror, installs it silently, creates a `sidecar` conda env (Python 3.12), downloads the sidecar code bundle from the backend, and pip-installs its requirements. All stages are cached — subsequent launches skip completed steps in under a second. A staged Chinese progress overlay (`SidecarDownloadProgress`) covers the full startup sequence.
 - LLM provider/key/model are configured by the user in desktop settings and passed to the sidecar at startup — no manual `.env` editing required.
+- **Auto-update**: the app uses `electron-updater` to silently check for and download new versions from Aliyun OSS. Users see a prompt when an update is ready to install.
 
 ## Run (Dev)
 
@@ -33,46 +34,79 @@ Optional env vars (overrides in-app settings):
 - `TUTOR_SIDECAR_URL` (default: `http://127.0.0.1:8000`)
 - `TUTOR_PYTHON` (override: uses conda env Python by default after first-launch setup)
 
+## Build
+
+```bash
+# Local build (unpacked, for testing)
+npm run pack:desktop
+
+# Local build (packaged dmg/exe)
+npm run build:desktop
+```
+
+macOS builds produce a universal (x64 + arm64) DMG and ZIP. Windows builds produce an x64 NSIS installer.
+
+## Release
+
+Releases are automated via GitHub Actions (`.github/workflows/release-desktop.yml`). A git tag triggers the full pipeline: build macOS + Windows in parallel, upload to Aliyun OSS, and create a GitHub Release.
+
+### Tag conventions
+
+| Tag format | Environment | Example |
+|---|---|---|
+| `v*` (no `-dev`) | **prod** | `v0.1.0`, `v1.0.0` |
+| `v*-dev*` | **dev** | `v0.1.0-dev.1`, `v0.2.0-dev.3` |
+
+### How to release
+
+```bash
+# 1. Bump version
+npm version 0.1.0 --no-git-tag-version    # or 0.1.0-dev.1 for dev
+
+# 2. Commit and tag
+git add package.json package-lock.json
+git commit -m "release: v0.1.0"
+git tag v0.1.0
+
+# 3. Push (triggers CI)
+git push && git push --tags
+```
+
+CI will:
+1. Detect environment from tag (`-dev` suffix → dev, otherwise → prod)
+2. Inject the correct `BACKEND_URL` into the build
+3. Build macOS universal (dmg + zip) and Windows x64 (nsis)
+4. Upload artifacts to OSS under `desktop-releases/dev/` or `desktop-releases/prod/`
+5. Create a GitHub Release (prerelease for dev tags)
+
+The `electron-updater` in running apps checks the OSS path for `latest-mac.yml` / `latest.yml` and auto-downloads new versions.
+
+### Required GitHub Secrets
+
+| Secret | Purpose |
+|---|---|
+| `OSS_REGION` | Aliyun region, e.g. `cn-beijing` |
+| `OSS_BUCKET` | OSS bucket name |
+| `OSS_ACCESS_KEY_ID` | Aliyun access key ID |
+| `OSS_ACCESS_KEY_SECRET` | Aliyun access key secret |
+| `OSS_PUBLISH_URL_DEV` | Full OSS URL for dev updates, e.g. `https://bucket.oss-cn-xxx.aliyuncs.com/desktop-releases/dev` |
+| `OSS_PUBLISH_URL_PROD` | Full OSS URL for prod updates |
+| `BACKEND_URL_DEV` | Dev backend base URL |
+| `BACKEND_URL_PROD` | Prod backend base URL |
+| `MAC_CSC_LINK` | (optional) Base64-encoded macOS code signing certificate |
+| `MAC_CSC_KEY_PASSWORD` | (optional) Certificate password |
+
+### Auto-update flow
+
+1. App checks OSS for updates on startup (10s delay) and every 4 hours
+2. If a newer version is found, it downloads silently in the background
+3. Renderer receives `app-update:downloaded` event → can show "Update ready" UI
+4. Update installs on next app quit, or user can trigger immediately via `installUpdate()`
+
 ## Auth Flow
 
 - Login: email + password
 - Register: email code + password + display name
-
-## Remaining TODOs for Stable Runnable App
-
-### P0 (must finish)
-
-- [ ] Validate sidecar startup in packaged builds (runtime now does health+contract preflight with stderr diagnostics; packaged manual verification still needed).
-- [x] Add centralized token refresh + retry-on-401 in backend client/request bridge.
-- [x] Bind normalized stream events to roadmap/report UI states (`roadmap_update`, `memo_update`, `done`).
-- [x] Pass resolved chapter/expert bundle paths into sidecar session creation (not only chapter id).
-- [x] Freeze prompt-source contract for markdown inputs (chapter-local vs global agent files), and implement deterministic fallback order with explicit logging on missing files.
-- [x] Remove remaining mock update IPC (`updates:getManifest`) and mock artifacts from runtime path.
-- [x] Remove hardcoded legacy chapter session bootstrap in secondary chat (`components/ChatPanel.tsx`) and bind to active chapter context.
-- [x] Unify sidecar contract between docs and implementation by updating draft docs to the current `/api/session/*` integration + renderer event normalization.
-- [x] Add startup/session preflight checks against sidecar `/health` + `/api/contract` before session creation.
-- [x] Implement Miniconda-based automatic sidecar runtime setup with staged progress UI (replaces manual python_runtime bundle with embedded Python).
-
-### P1 (stability/reliability)
-
-- [x] Implement sync queue backoff scheduler, retry caps, and dead-letter handling.
-- [ ] Add required/optional bundle installation policy and retry/resume behavior.
-- [x] Add sidecar auto-restart policy and explicit user-visible error states.
-- [x] Fully implement `rememberLogin` behavior in runtime/session restore logic.
-- [ ] Harden secure secret storage fallback strategy when `safeStorage` is unavailable.
-- [ ] Add structured logs for startup/update/session/sync failures.
-
-### P2 (release readiness)
-
-- [ ] Add integration smoke flow tests:
-  - login -> join course -> open chapter -> stream one turn -> sync progress/analytics.
-- [ ] Add failure-path tests:
-  - backend unavailable
-  - sidecar unavailable
-  - bundle checksum mismatch
-- [ ] Add packaging/signing checklist and scripts for macOS/Windows releases.
-- [ ] Update docs and examples to remove remaining mock references.
-- [ ] Remove unused legacy modules after migration (`services/mockApi.ts`, unused mock/update paths).
 
 ## Note on Contract Alignment
 
