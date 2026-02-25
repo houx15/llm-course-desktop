@@ -32,9 +32,21 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCreateNewSession,
   onSelectSession,
 }) => {
-  // Initialize with all phases expanded
+  // Keep all phases (courses) expanded so chapter list is always visible
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set(phases.map(p => p.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+
+  // Auto-expand newly loaded phases (phases may arrive after initial mount)
+  useEffect(() => {
+    setExpandedPhases(prev => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const p of phases) {
+        if (!next.has(p.id)) { next.add(p.id); changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [phases]);
 
   // Auto-expand the session list when navigating to a chapter
   useEffect(() => {
