@@ -39,6 +39,7 @@
     ],
     "mac": {
       "icon": "assets/icon.icns",
+      "x64ArchFiles": "Contents/Resources/app.asar.unpacked/node_modules/node-pty/**",
       "target": [
         {
           "target": "dmg",
