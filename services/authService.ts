@@ -141,7 +141,7 @@ export const authService = {
     );
   },
 
-  async register(input: { email: string; verificationCode: string; password: string; displayName: string }) {
+  async register(input: { email: string; verificationCode: string; password: string; displayName: string; inviteCode: string }) {
     const auth = await getAuthState();
     const response = await backendClient.post<AuthResponse>(
       '/v1/auth/register',
@@ -150,6 +150,7 @@ export const authService = {
         verification_code: input.verificationCode,
         password: input.password,
         display_name: input.displayName,
+        invite_code: input.inviteCode,
         device_id: auth.deviceId,
       },
       false

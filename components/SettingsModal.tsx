@@ -476,12 +476,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                 </button>
 
                 {updateMessage && (
-                  <p className={`text-sm font-medium ${
-                    updateStatus === 'update-available' ? 'text-blue-600' :
-                    updateStatus === 'up-to-date' ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {updateMessage}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className={`text-sm font-medium ${
+                      updateStatus === 'update-available' ? 'text-blue-600' :
+                      updateStatus === 'up-to-date' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {updateMessage}
+                    </p>
+                    {updateStatus === 'update-available' && (
+                      <button
+                        onClick={() => window.tutorApp?.installUpdate()}
+                        className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        立即更新
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {/* Log file path */}

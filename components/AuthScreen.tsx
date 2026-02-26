@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserPlus, LogIn, AlertCircle, Mail, KeyRound } from 'lucide-react';
+import { UserPlus, LogIn, AlertCircle, Mail, KeyRound, Ticket } from 'lucide-react';
 import { authService } from '../services/authService';
 import { User } from '../types';
 import KnoweiaLogo from './KnoweiaLogo';
@@ -15,6 +15,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     email: '',
     password: '',
     verificationCode: '',
+    inviteCode: '',
   });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -59,6 +60,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     }
 
     if (isRegistering) {
+      if (!formData.inviteCode) {
+        setError('注册需要填写邀请码');
+        return;
+      }
       if (!formData.name) {
         setError('注册需要填写昵称');
         return;
@@ -77,6 +82,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             verificationCode: formData.verificationCode,
             password: formData.password,
             displayName: formData.name,
+            inviteCode: formData.inviteCode,
           })
         : await authService.login({
             email: formData.email,
@@ -108,7 +114,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
               setIsRegistering(!isRegistering);
               setError('');
               setNotice('');
-              setFormData({ name: '', email: '', password: '', verificationCode: '' });
+              setFormData({ name: '', email: '', password: '', verificationCode: '', inviteCode: '' });
             }}
             className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
           >
@@ -125,6 +131,23 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
           )}
 
           {notice && <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-700">{notice}</div>}
+
+          {isRegistering && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-gray-500 uppercase">邀请码</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  name="inviteCode"
+                  value={formData.inviteCode}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all uppercase"
+                  placeholder="输入邀请码"
+                />
+                <Ticket size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </div>
+            </div>
+          )}
 
           {isRegistering && (
             <div className="space-y-1.5">
