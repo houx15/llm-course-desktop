@@ -13,8 +13,6 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       environment: ${{ steps.meta.outputs.environment }}
-      publish_url: ${{ steps.meta.outputs.publish_url }}
-      backend_url: ${{ steps.meta.outputs.backend_url }}
     steps:
       - name: Parse tag metadata
         id: meta
@@ -24,12 +22,8 @@ jobs:
 
           if [[ "$TAG" == *"-dev"* ]]; then
             echo "environment=dev" >> "$GITHUB_OUTPUT"
-            echo "publish_url=${{ secrets.OSS_PUBLISH_URL_DEV }}" >> "$GITHUB_OUTPUT"
-            echo "backend_url=${{ secrets.BACKEND_URL_DEV }}" >> "$GITHUB_OUTPUT"
           else
             echo "environment=prod" >> "$GITHUB_OUTPUT"
-            echo "publish_url=${{ secrets.OSS_PUBLISH_URL_PROD }}" >> "$GITHUB_OUTPUT"
-            echo "backend_url=${{ secrets.BACKEND_URL_PROD }}" >> "$GITHUB_OUTPUT"
           fi
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -72,9 +66,14 @@ jobs:
       - name: Inject publish config into package.json
         shell: bash
         run: |
-          PUBLISH_URL="${{ needs.prepare.outputs.publish_url }}"
+          ENV="${{ needs.prepare.outputs.environment }}"
+          if [ "$ENV" = "dev" ]; then
+            PUBLISH_URL="${{ secrets.OSS_PUBLISH_URL_DEV }}"
+          else
+            PUBLISH_URL="${{ secrets.OSS_PUBLISH_URL_PROD }}"
+          fi
           if [ -z "$PUBLISH_URL" ]; then
-            echo "::error::publish_url is empty — check OSS_PUBLISH_URL_DEV/PROD secrets"
+            echo "::error::PUBLISH_URL is empty — check OSS_PUBLISH_URL_${ENV^^} secret"
             exit 1
           fi
           node -e "
@@ -88,7 +87,12 @@ jobs:
       - name: Set backend URL
         shell: bash
         run: |
-          BACKEND_URL="${{ needs.prepare.outputs.backend_url }}"
+          ENV="${{ needs.prepare.outputs.environment }}"
+          if [ "$ENV" = "dev" ]; then
+            BACKEND_URL="${{ secrets.BACKEND_URL_DEV }}"
+          else
+            BACKEND_URL="${{ secrets.BACKEND_URL_PROD }}"
+          fi
           if [ -n "$BACKEND_URL" ]; then
             sed -i.bak "s|process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723'|process.env.TUTOR_BACKEND_URL || '${BACKEND_URL}'|" electron/main.mjs
             rm -f electron/main.mjs.bak
@@ -167,7 +171,7 @@ jobs:
 
           echo "Upload complete!"
 
-      - name: Verify latest-mac.yml exists
+      - name: Verify upload
         run: |
           ENV="${{ needs.prepare.outputs.environment }}"
           BUCKET="${{ secrets.OSS_BUCKET }}"
