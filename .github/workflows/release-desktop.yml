@@ -94,9 +94,17 @@ jobs:
             BACKEND_URL="${{ secrets.BACKEND_URL_PROD }}"
           fi
           if [ -n "$BACKEND_URL" ]; then
-            sed -i.bak "s|process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723'|process.env.TUTOR_BACKEND_URL || '${BACKEND_URL}'|" electron/main.mjs
-            rm -f electron/main.mjs.bak
-            echo "Backend URL set to: ${BACKEND_URL}"
+            node -e "
+            const fs = require('fs');
+            const url = process.argv[1];
+            let code = fs.readFileSync('electron/main.mjs', 'utf8');
+            code = code.replace(
+              \"process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723'\",
+              'process.env.TUTOR_BACKEND_URL || ' + JSON.stringify(url)
+            );
+            fs.writeFileSync('electron/main.mjs', code);
+            console.log('Backend URL set to:', url);
+            " "$BACKEND_URL"
           else
             echo "No BACKEND_URL secret set, keeping default"
           fi
