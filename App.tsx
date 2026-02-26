@@ -19,7 +19,7 @@ import { Phase, Chapter, CourseSummary, User, SessionSummary } from './types';
 import { fetchChapterSessions } from './services/backendClient';
 import SidecarDownloadProgress from './components/SidecarDownloadProgress';
 import BugReportModal from './components/BugReportModal';
-import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight, ArrowUpCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   // Auth State
@@ -47,6 +47,7 @@ const App: React.FC = () => {
   >({});
   const [runtimeNotice, setRuntimeNotice] = useState('');
   const [showSidecarDownload, setShowSidecarDownload] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<{ version: string } | null>(null);
   const [editorWidths, setEditorWidths] = useState<Record<string, number>>({});
   const [isResizingEditor, setIsResizingEditor] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(260);
@@ -240,6 +241,14 @@ const App: React.FC = () => {
     if (!window.tutorApp?.onRuntimeLog) return;
     return window.tutorApp.onRuntimeLog(({ text }) => {
       console.warn('[sidecar]', text.trimEnd());
+    });
+  }, []);
+
+  // Listen for app updates downloaded by electron-updater
+  useEffect(() => {
+    if (!window.tutorApp?.onUpdateDownloaded) return;
+    return window.tutorApp.onUpdateDownloaded(({ version }) => {
+      setPendingUpdate({ version });
     });
   }, []);
 
@@ -676,6 +685,24 @@ const App: React.FC = () => {
   // Render Dashboard or Course Interface
   return (
     <>
+      {pendingUpdate && (
+        <div className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-center gap-3 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm shadow-lg">
+          <ArrowUpCircle size={16} className="shrink-0" />
+          <span>新版本 <b>{pendingUpdate.version}</b> 已下载完成</span>
+          <button
+            onClick={() => window.tutorApp?.installUpdate()}
+            className="ml-1 px-3 py-1 bg-white text-blue-700 font-semibold rounded-md text-xs hover:bg-blue-50 transition-colors"
+          >
+            立即重启更新
+          </button>
+          <button
+            onClick={() => setPendingUpdate(null)}
+            className="ml-1 px-2 py-1 text-white/80 hover:text-white text-xs transition-colors"
+          >
+            稍后
+          </button>
+        </div>
+      )}
       {showOnboarding && (
         <OnboardingModal onComplete={handleOnboardingComplete} />
       )}
