@@ -292,23 +292,44 @@ const App: React.FC = () => {
       try {
         const runtimeResult = await runtimeManager.start();
         if (runtimeResult.needsRestart) {
-          // Conda/env was freshly installed — keep overlay visible for the restart button.
-          // Set the ref immediately so no other code path hides the overlay.
           sidecarNeedsRestartRef.current = true;
           return;
         }
         if (!runtimeResult.started) {
-          setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
-          if (runtimeResult.failureStage !== 'sidecar' && !sidecarNeedsRestartRef.current) {
-            setShowSidecarDownload(false);
+          // Sidecar-stage failures (download/install): keep overlay for manual retry
+          if (runtimeResult.failureStage === 'sidecar') {
+            return;
           }
-          // Keep overlay visible for sidecar setup/download failures so retry remains accessible
-          return;
-        } else if (!sidecarNeedsRestartRef.current) {
+          // Runtime-stage failures (health/preflight): auto-retry up to 5 times
+          let lastReason = runtimeResult.reason || '本地运行时启动失败';
+          let succeeded = false;
+          for (let attempt = 2; attempt <= 5; attempt++) {
+            console.warn(`[startup] Runtime start failed (attempt ${attempt - 1}/5): ${lastReason}`);
+            await new Promise((r) => setTimeout(r, 3000));
+            try {
+              const retry = await runtimeManager.start();
+              if (retry.started) {
+                succeeded = true;
+                break;
+              }
+              lastReason = retry.reason || '本地运行时启动失败';
+            } catch (retryErr) {
+              lastReason = retryErr instanceof Error ? retryErr.message : '本地运行时启动失败';
+            }
+          }
+          if (!succeeded) {
+            console.warn(`[startup] Runtime start failed after 5 attempts: ${lastReason}`);
+            setRuntimeNotice(lastReason);
+            if (!sidecarNeedsRestartRef.current) {
+              setShowSidecarDownload(false);
+            }
+            return;
+          }
+        }
+        if (!sidecarNeedsRestartRef.current) {
           setRuntimeNotice('');
           setShowSidecarDownload(false);
         }
-        // If sidecarNeedsRestartRef is true, keep overlay visible so the restart button stays.
       } catch (err) {
         console.warn('Runtime start failed:', err);
         setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
@@ -607,30 +628,30 @@ const App: React.FC = () => {
   };
 
   const handleSidecarRetry = async () => {
-    try {
-      const runtimeResult = await runtimeManager.start();
-      if (runtimeResult.needsRestart) {
-        sidecarNeedsRestartRef.current = true;
-        return;
-      }
-      if (!runtimeResult.started) {
-        setRuntimeNotice(runtimeResult.reason || '本地运行时启动失败');
-        if (runtimeResult.failureStage !== 'sidecar' && !sidecarNeedsRestartRef.current) {
-          setShowSidecarDownload(false);
+    let lastReason = '';
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        const runtimeResult = await runtimeManager.start();
+        if (runtimeResult.needsRestart) {
+          sidecarNeedsRestartRef.current = true;
+          return;
         }
-        // Keep overlay visible for sidecar setup/download failures so retry remains accessible
-        return;
+        if (runtimeResult.started) {
+          setRuntimeNotice('');
+          setShowSidecarDownload(false);
+          return;
+        }
+        lastReason = runtimeResult.reason || '本地运行时启动失败';
+      } catch (err) {
+        lastReason = err instanceof Error ? err.message : '本地运行时启动失败';
       }
-      setRuntimeNotice('');
-      // Only dismiss on success
-      setShowSidecarDownload(false);
-    } catch (err) {
-      console.warn('Sidecar retry failed:', err);
-      setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
-      if (!sidecarNeedsRestartRef.current) {
-        setShowSidecarDownload(false);
+      if (attempt < 5) {
+        console.warn(`[retry] Runtime start failed (attempt ${attempt}/5): ${lastReason}`);
+        await new Promise((r) => setTimeout(r, 3000));
       }
     }
+    console.warn(`[retry] Runtime start failed after 5 attempts: ${lastReason}`);
+    setRuntimeNotice(lastReason);
   };
 
   const currentChapterId = currentChapter?.id || '';
