@@ -46,7 +46,6 @@ const App: React.FC = () => {
     Record<string, { dynamicReport: string; roadmapUpdating: boolean; memoUpdating: boolean }>
   >({});
   const [runtimeNotice, setRuntimeNotice] = useState('');
-  const [showBugReport, setShowBugReport] = useState(false);
   const [showSidecarDownload, setShowSidecarDownload] = useState(false);
   const [editorWidths, setEditorWidths] = useState<Record<string, number>>({});
   const [isResizingEditor, setIsResizingEditor] = useState(false);
@@ -660,23 +659,15 @@ const App: React.FC = () => {
         <OnboardingModal onComplete={handleOnboardingComplete} />
       )}
       <BugReportModal
-        isOpen={showBugReport}
+        isOpen={!!runtimeNotice && !showSidecarDownload}
         errorMessage={runtimeNotice}
-        onClose={() => setShowBugReport(false)}
+        onRetry={handleSidecarRetry}
+        onLogout={handleLogout}
       />
       {view === 'dashboard' ? (
         <div className="flex flex-col h-screen bg-gray-50 font-sans text-gray-900">
             <TopBar user={user} onLogout={handleLogout} />
             {sidecarOverlay}
-            {runtimeNotice && (
-              <button
-                onClick={() => setShowBugReport(true)}
-                className="w-full px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200 hover:bg-red-100 transition-colors text-left cursor-pointer"
-              >
-                本地运行时异常：{runtimeNotice}
-                <span className="ml-2 text-red-500 underline">上传错误报告</span>
-              </button>
-            )}
             <Dashboard
                 user={user}
                 courses={myCourses}
@@ -694,11 +685,6 @@ const App: React.FC = () => {
         isSidebarOpen={isSidebarOpen}
       />
       {sidecarOverlay}
-      {runtimeNotice && (
-        <div className="px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200">
-          本地运行时异常：{runtimeNotice}
-        </div>
-      )}
 
       <div
         className="flex flex-1 overflow-hidden relative"

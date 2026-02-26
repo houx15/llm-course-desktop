@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, AlertTriangle, Upload, CheckCircle, Copy } from 'lucide-react';
+import { AlertTriangle, Upload, CheckCircle, Copy, RefreshCw, Settings, LogOut } from 'lucide-react';
 import {
   getBugReportUrl,
   uploadWorkspaceToPresignedUrl,
@@ -9,17 +9,26 @@ import {
 interface BugReportModalProps {
   isOpen: boolean;
   errorMessage: string;
-  onClose: () => void;
+  onRetry: () => void;
+  onOpenSettings?: () => void;
+  onLogout?: () => void;
 }
 
 type UploadState = 'idle' | 'collecting' | 'uploading' | 'confirming' | 'done' | 'error';
 
-const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, errorMessage, onClose }) => {
+const BugReportModal: React.FC<BugReportModalProps> = ({
+  isOpen,
+  errorMessage,
+  onRetry,
+  onOpenSettings,
+  onLogout,
+}) => {
   const [description, setDescription] = useState('');
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [bugId, setBugId] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   if (!isOpen) return null;
 
@@ -28,7 +37,6 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, errorMessage, o
     setUploadState('collecting');
 
     try {
-      // Step 1: Collect system info + logs from main process
       const report = await window.tutorApp!.collectBugReport();
 
       const logPayload = JSON.stringify({
@@ -46,11 +54,9 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, errorMessage, o
 
       const fileSizeBytes = new Blob([logPayload]).size;
 
-      // Step 2: Get presigned URL from backend
       setUploadState('uploading');
       const { bug_id, presigned_url, oss_key, required_headers } = await getBugReportUrl({ fileSizeBytes });
 
-      // Step 3: Upload to OSS
       await uploadWorkspaceToPresignedUrl({
         presignedUrl: presigned_url,
         content: logPayload,
@@ -58,7 +64,6 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, errorMessage, o
         headers: required_headers,
       });
 
-      // Step 4: Confirm with backend
       setUploadState('confirming');
       await confirmBugReport({
         bugId: bug_id,
@@ -89,45 +94,39 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, errorMessage, o
     });
   };
 
-  const handleClose = () => {
-    // Reset state
-    setDescription('');
-    setUploadState('idle');
-    setBugId('');
-    setUploadError('');
-    setCopied(false);
-    onClose();
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
   };
 
   const isUploading = uploadState === 'collecting' || uploadState === 'uploading' || uploadState === 'confirming';
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-red-50">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={20} className="text-red-500" />
-            <h2 className="text-lg font-bold text-gray-800">运行时错误</h2>
-          </div>
-          <button
-            onClick={handleClose}
-            className="p-1 hover:bg-red-100 rounded-full transition-colors text-gray-500"
-          >
-            <X size={20} />
-          </button>
+      <div className="bg-white rounded-2xl shadow-2xl w-[520px] overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header - no close button, this is blocking */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2 bg-red-50">
+          <AlertTriangle size={20} className="text-red-500" />
+          <h2 className="text-lg font-bold text-gray-800">运行时启动失败</h2>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 overflow-y-auto">
           {/* Error display */}
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
             <p className="text-sm text-red-700 font-medium">错误信息</p>
             <p className="text-sm text-red-600 mt-1 break-all">{errorMessage || '本地运行时启动失败'}</p>
           </div>
 
+          <p className="text-sm text-gray-600">
+            本地 AI 助教运行时未能启动，学习功能暂时不可用。您可以尝试重新启动，或上传错误日志给技术支持。
+          </p>
+
           {uploadState === 'done' ? (
-            /* Success state */
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <CheckCircle size={20} className="text-green-500" />
@@ -151,7 +150,6 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, errorMessage, o
               </p>
             </div>
           ) : (
-            /* Form / upload state */
             <>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-500 uppercase">问题描述（可选）</label>
@@ -178,28 +176,33 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, errorMessage, o
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
-          {uploadState === 'done' ? (
+        {/* Footer - primary actions */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-3">
+          {/* Primary row: retry + upload */}
+          <div className="flex gap-3">
             <button
-              onClick={handleClose}
-              className="px-5 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors"
+              onClick={handleRetry}
+              disabled={retrying || isUploading}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              关闭
+              {retrying ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  重新启动中...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={16} />
+                  重新启动
+                </>
+              )}
             </button>
-          ) : (
-            <>
-              <button
-                onClick={handleClose}
-                disabled={isUploading}
-                className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-50"
-              >
-                取消
-              </button>
+
+            {uploadState !== 'done' && (
               <button
                 onClick={handleSubmit}
-                disabled={isUploading}
-                className="flex items-center gap-2 px-5 py-2.5 bg-black text-white font-bold rounded-xl shadow-lg hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isUploading || retrying}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isUploading ? (
                   <>
@@ -213,8 +216,32 @@ const BugReportModal: React.FC<BugReportModalProps> = ({ isOpen, errorMessage, o
                   </>
                 )}
               </button>
-            </>
-          )}
+            )}
+          </div>
+
+          {/* Secondary row: settings + logout */}
+          <div className="flex justify-center gap-6">
+            {onOpenSettings && (
+              <button
+                onClick={onOpenSettings}
+                disabled={retrying || isUploading}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+              >
+                <Settings size={14} />
+                设置
+              </button>
+            )}
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                disabled={retrying || isUploading}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+              >
+                <LogOut size={14} />
+                退出登录
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
