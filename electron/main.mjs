@@ -349,14 +349,8 @@ const fallbackDecrypt = (record) => {
 };
 
 const encryptString = (plain) => {
-  if (safeStorage.isEncryptionAvailable()) {
-    try {
-      const encrypted = safeStorage.encryptString(plain);
-      return { encrypted: true, data: encrypted.toString('base64') };
-    } catch {
-      // safeStorage threw (permission denied) — fall through to fallback
-    }
-  }
+  // Use machine-derived key encryption (AES-256-CBC).
+  // Avoids OS Keychain prompts and survives app replacement during updates.
   return fallbackEncrypt(plain);
 };
 
@@ -412,6 +406,11 @@ const loadSecureStore = async (filePath, fallback) => {
     }
     const value = safeJson(decrypted, fallback);
     _secureStoreCache.set(filePath, value);
+    // Migrate: if data was safeStorage-encrypted, re-save with fallback
+    // encryption so it survives future unsigned app replacements.
+    if (record && record.encrypted && !record.fallback) {
+      await saveSecureStore(filePath, value);
+    }
     return value;
   } catch {
     return fallback;
