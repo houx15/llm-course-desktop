@@ -1159,7 +1159,8 @@ ipcMain.handle('app:checkForUpdates', async () => {
     const result = await autoUpdater.checkForUpdates();
     const remoteVersion = result?.updateInfo?.version;
     const currentVersion = app.getVersion();
-    const hasUpdate = remoteVersion && remoteVersion !== currentVersion;
+    const { gt } = await import('semver');
+    const hasUpdate = remoteVersion && gt(remoteVersion, currentVersion);
     return { updateAvailable: !!hasUpdate, version: remoteVersion };
   } catch {
     return { updateAvailable: false };
