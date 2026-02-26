@@ -69,17 +69,21 @@ jobs:
       - name: Set version in package.json
         run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
 
-      - name: Override publish URL for prod builds
-        if: needs.prepare.outputs.environment == 'prod'
+      - name: Inject publish config into package.json
         shell: bash
         run: |
+          PUBLISH_URL="${{ needs.prepare.outputs.publish_url }}"
+          if [ -z "$PUBLISH_URL" ]; then
+            echo "::error::publish_url is empty — check OSS_PUBLISH_URL_DEV/PROD secrets"
+            exit 1
+          fi
           node -e "
           const fs = require('fs');
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          pkg.build.publish = { provider: 'generic', url: '${{ needs.prepare.outputs.publish_url }}' };
+          pkg.build.publish = { provider: 'generic', url: process.argv[1] };
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-          echo "Publish URL overridden for prod"
+          console.log('Publish URL set to:', process.argv[1]);
+          " "$PUBLISH_URL"
 
       - name: Set backend URL
         shell: bash

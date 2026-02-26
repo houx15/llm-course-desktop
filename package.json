@@ -68,10 +68,6 @@
     },
     "linux": {
       "icon": "assets/icon.png"
-    },
-    "publish": {
-      "provider": "generic",
-      "url": "https://llm4ss-open.oss-cn-beijing.aliyuncs.com/desktop-releases/dev/"
     }
   },
   "dependencies": {
