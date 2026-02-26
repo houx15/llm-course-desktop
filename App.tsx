@@ -690,7 +690,12 @@ const App: React.FC = () => {
           <ArrowUpCircle size={16} className="shrink-0" />
           <span>新版本 <b>{pendingUpdate.version}</b> 已下载完成</span>
           <button
-            onClick={() => window.tutorApp?.installUpdate()}
+            onClick={async () => {
+              const result = await window.tutorApp?.installUpdate();
+              if (result?.error) {
+                setPendingUpdate({ version: result.error });
+              }
+            }}
             className="ml-1 px-3 py-1 bg-white text-blue-700 font-semibold rounded-md text-xs hover:bg-blue-50 transition-colors"
           >
             立即重启更新

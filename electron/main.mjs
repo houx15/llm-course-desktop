@@ -1173,10 +1173,19 @@ ipcMain.handle('app:installUpdate', async () => {
     const cachePath = path.join(app.getPath('home'), 'Library', 'Caches', 'knoweia-desktop-updater', 'pending');
     const infoPath = path.join(cachePath, 'update-info.json');
     try {
+      if (!fsSync.existsSync(infoPath)) {
+        return { error: '没有待安装的更新' };
+      }
       const info = JSON.parse(fsSync.readFileSync(infoPath, 'utf8'));
       const zipPath = path.join(cachePath, info.fileName);
+      if (!fsSync.existsSync(zipPath)) {
+        return { error: '更新文件未找到，请重新检查更新' };
+      }
       const appPath = app.getPath('exe').replace(/\/Contents\/MacOS\/.*$/, '');
       const tmpDir = path.join(app.getPath('temp'), 'knoweia-update');
+
+      console.log(`[auto-updater] Installing: ${info.fileName}`);
+      console.log(`[auto-updater] App path: ${appPath}`);
 
       // Clean tmp dir
       fsSync.rmSync(tmpDir, { recursive: true, force: true });
@@ -1187,9 +1196,12 @@ ipcMain.handle('app:installUpdate', async () => {
 
       // Find the .app inside
       const extracted = fsSync.readdirSync(tmpDir).find(f => f.endsWith('.app'));
-      if (!extracted) throw new Error('No .app found in update zip');
+      if (!extracted) {
+        return { error: '更新包中未找到应用文件' };
+      }
 
       const newAppPath = path.join(tmpDir, extracted);
+      console.log(`[auto-updater] Extracted: ${newAppPath}`);
 
       // Replace: remove old, move new
       fsSync.rmSync(appPath, { recursive: true, force: true });
@@ -1199,12 +1211,13 @@ ipcMain.handle('app:installUpdate', async () => {
       fsSync.rmSync(cachePath, { recursive: true, force: true });
 
       // Relaunch
+      console.log('[auto-updater] Relaunching...');
       execSync(`open "${appPath}"`);
       app.quit();
     } catch (err) {
-      console.error('[auto-updater] Manual install failed:', err);
-      // Fall back to default
-      autoUpdater.quitAndInstall(false, true);
+      const msg = err?.message || String(err);
+      console.error('[auto-updater] Manual install failed:', msg);
+      return { error: `安装失败: ${msg}` };
     }
   } else {
     autoUpdater.quitAndInstall(false, true);
