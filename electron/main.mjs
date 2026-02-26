@@ -1187,15 +1187,15 @@ ipcMain.handle('app:installUpdate', async () => {
       console.log(`[auto-updater] Installing: ${info.fileName}`);
       console.log(`[auto-updater] App path: ${appPath}`);
 
-      // Clean tmp dir
-      fsSync.rmSync(tmpDir, { recursive: true, force: true });
-      fsSync.mkdirSync(tmpDir, { recursive: true });
+      // Use shell rm/mkdir instead of fsSync — Electron's fs patches
+      // treat .asar files as virtual directories, causing ENOTDIR errors.
+      execSync(`rm -rf "${tmpDir}" && mkdir -p "${tmpDir}"`);
 
       // Unzip
       execSync(`unzip -o -q "${zipPath}" -d "${tmpDir}"`);
 
       // Find the .app inside
-      const extracted = fsSync.readdirSync(tmpDir).find(f => f.endsWith('.app'));
+      const extracted = execSync(`ls "${tmpDir}" | grep '\\.app$'`).toString().trim();
       if (!extracted) {
         return { error: '更新包中未找到应用文件' };
       }
@@ -1204,11 +1204,11 @@ ipcMain.handle('app:installUpdate', async () => {
       console.log(`[auto-updater] Extracted: ${newAppPath}`);
 
       // Replace: remove old, move new
-      fsSync.rmSync(appPath, { recursive: true, force: true });
+      execSync(`rm -rf "${appPath}"`);
       execSync(`mv "${newAppPath}" "${appPath}"`);
 
       // Clean up cache
-      fsSync.rmSync(cachePath, { recursive: true, force: true });
+      execSync(`rm -rf "${cachePath}"`);
 
       // Relaunch
       console.log('[auto-updater] Relaunching...');
