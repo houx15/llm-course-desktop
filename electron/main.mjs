@@ -4,6 +4,7 @@ const { autoUpdater } = pkg;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import fsSync from 'node:fs';
 import tar from 'tar';
 import { spawn, execSync } from 'child_process';
 import { createRequire } from 'module';
@@ -1162,8 +1163,49 @@ ipcMain.handle('app:checkForUpdates', async () => {
     return { updateAvailable: false };
   }
 });
-ipcMain.handle('app:installUpdate', () => {
-  autoUpdater.quitAndInstall(false, true);
+ipcMain.handle('app:installUpdate', async () => {
+  if (process.platform === 'darwin') {
+    // On macOS, quitAndInstall is unreliable with ad-hoc signed apps.
+    // Manually unzip the update, replace the app, and relaunch.
+    const cachePath = path.join(app.getPath('home'), 'Library', 'Caches', 'knoweia-desktop-updater', 'pending');
+    const infoPath = path.join(cachePath, 'update-info.json');
+    try {
+      const info = JSON.parse(fsSync.readFileSync(infoPath, 'utf8'));
+      const zipPath = path.join(cachePath, info.fileName);
+      const appPath = app.getPath('exe').replace(/\/Contents\/MacOS\/.*$/, '');
+      const tmpDir = path.join(app.getPath('temp'), 'knoweia-update');
+
+      // Clean tmp dir
+      fsSync.rmSync(tmpDir, { recursive: true, force: true });
+      fsSync.mkdirSync(tmpDir, { recursive: true });
+
+      // Unzip
+      execSync(`unzip -o -q "${zipPath}" -d "${tmpDir}"`);
+
+      // Find the .app inside
+      const extracted = fsSync.readdirSync(tmpDir).find(f => f.endsWith('.app'));
+      if (!extracted) throw new Error('No .app found in update zip');
+
+      const newAppPath = path.join(tmpDir, extracted);
+
+      // Replace: remove old, move new
+      fsSync.rmSync(appPath, { recursive: true, force: true });
+      execSync(`mv "${newAppPath}" "${appPath}"`);
+
+      // Clean up cache
+      fsSync.rmSync(cachePath, { recursive: true, force: true });
+
+      // Relaunch
+      execSync(`open "${appPath}"`);
+      app.quit();
+    } catch (err) {
+      console.error('[auto-updater] Manual install failed:', err);
+      // Fall back to default
+      autoUpdater.quitAndInstall(false, true);
+    }
+  } else {
+    autoUpdater.quitAndInstall(false, true);
+  }
 });
 ipcMain.handle('app:openExternal', async (_event, url) => {
   if (typeof url === 'string' && url.length > 0) {
