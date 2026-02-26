@@ -5,6 +5,23 @@ contextBridge.exposeInMainWorld('tutorApp', {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
+  onUpdateAvailable: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('app-update:available', listener);
+    return () => ipcRenderer.removeListener('app-update:available', listener);
+  },
+  onUpdateDownloadProgress: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('app-update:download-progress', listener);
+    return () => ipcRenderer.removeListener('app-update:download-progress', listener);
+  },
+  onUpdateDownloaded: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('app-update:downloaded', listener);
+    return () => ipcRenderer.removeListener('app-update:downloaded', listener);
+  },
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
@@ -32,6 +49,7 @@ contextBridge.exposeInMainWorld('tutorApp', {
 
   listCurriculumChapters: () => ipcRenderer.invoke('curriculum:listChapters'),
   getCurriculumChapterContent: (payload) => ipcRenderer.invoke('curriculum:getChapterContent', payload),
+  getCurriculumCourseOverview: (payload) => ipcRenderer.invoke('curriculum:getCourseOverview', payload),
 
   checkSidecarBundle: () => ipcRenderer.invoke('sidecar:checkBundle'),
   ensureSidecarReady: () => ipcRenderer.invoke('sidecar:ensureReady'),
@@ -87,5 +105,13 @@ contextBridge.exposeInMainWorld('tutorApp', {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('pty:exit', listener);
     return () => ipcRenderer.removeListener('pty:exit', listener);
+  },
+
+  collectBugReport: () => ipcRenderer.invoke('bugs:collect'),
+  getRuntimeLogs: () => ipcRenderer.invoke('runtime:getLogs'),
+  onRuntimeLog: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('runtime:log', listener);
+    return () => ipcRenderer.removeListener('runtime:log', listener);
   },
 });
