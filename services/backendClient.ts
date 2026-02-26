@@ -272,6 +272,36 @@ export async function deleteChapterCloudFile(chapterId: string, filename: string
   );
 }
 
+// ── Bug report upload ──────────────────────────────────────────────────────
+
+export async function getBugReportUrl(params: {
+  fileSizeBytes: number;
+}): Promise<{ bug_id: string; presigned_url: string; oss_key: string; required_headers?: Record<string, string> }> {
+  return backendClient.post('/v1/bugs/report-url', {
+    file_size_bytes: params.fileSizeBytes,
+  });
+}
+
+export async function confirmBugReport(params: {
+  bugId: string;
+  ossKey: string;
+  fileSizeBytes: number;
+  appVersion?: string;
+  platform?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{ bug_id: string }> {
+  return backendClient.post('/v1/bugs/confirm', {
+    bug_id: params.bugId,
+    oss_key: params.ossKey,
+    file_size_bytes: params.fileSizeBytes,
+    app_version: params.appVersion || '',
+    platform: params.platform || '',
+    description: params.description || '',
+    metadata: params.metadata || {},
+  });
+}
+
 export async function downloadFromUrl(url: string): Promise<string> {
   if (!url) throw new Error('Missing download URL');
 

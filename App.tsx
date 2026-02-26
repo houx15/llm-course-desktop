@@ -18,6 +18,7 @@ import { codeWorkspace } from './services/codeWorkspace';
 import { Phase, Chapter, CourseSummary, User, SessionSummary } from './types';
 import { fetchChapterSessions } from './services/backendClient';
 import SidecarDownloadProgress from './components/SidecarDownloadProgress';
+import BugReportModal from './components/BugReportModal';
 import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -45,6 +46,7 @@ const App: React.FC = () => {
     Record<string, { dynamicReport: string; roadmapUpdating: boolean; memoUpdating: boolean }>
   >({});
   const [runtimeNotice, setRuntimeNotice] = useState('');
+  const [showBugReport, setShowBugReport] = useState(false);
   const [showSidecarDownload, setShowSidecarDownload] = useState(false);
   const [editorWidths, setEditorWidths] = useState<Record<string, number>>({});
   const [isResizingEditor, setIsResizingEditor] = useState(false);
@@ -657,14 +659,23 @@ const App: React.FC = () => {
       {showOnboarding && (
         <OnboardingModal onComplete={handleOnboardingComplete} />
       )}
+      <BugReportModal
+        isOpen={showBugReport}
+        errorMessage={runtimeNotice}
+        onClose={() => setShowBugReport(false)}
+      />
       {view === 'dashboard' ? (
         <div className="flex flex-col h-screen bg-gray-50 font-sans text-gray-900">
             <TopBar user={user} onLogout={handleLogout} />
             {sidecarOverlay}
             {runtimeNotice && (
-              <div className="px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200">
+              <button
+                onClick={() => setShowBugReport(true)}
+                className="w-full px-4 py-2 text-sm bg-red-50 text-red-700 border-b border-red-200 hover:bg-red-100 transition-colors text-left cursor-pointer"
+              >
                 本地运行时异常：{runtimeNotice}
-              </div>
+                <span className="ml-2 text-red-500 underline">上传错误报告</span>
+              </button>
             )}
             <Dashboard
                 user={user}

@@ -335,6 +335,16 @@ declare global {
       killTerminal: (payload: { chapterId: string }) => Promise<{ killed: boolean }>;
       onTerminalData: (callback: (payload: { chapterId: string; data: string }) => void) => () => void;
       onTerminalExit: (callback: (payload: { chapterId: string; exitCode: number; signal?: number }) => void) => () => void;
+      collectBugReport: () => Promise<{
+        appVersion: string;
+        platform: string;
+        arch: string;
+        electronVersion: string;
+        nodeVersion: string;
+        sidecarStderr: string;
+        sidecarLogFile?: string;
+        sidecarLogContent?: string;
+      }>;
       getRuntimeLogs: () => Promise<{ stderr: string; logFile?: string }>;
       onRuntimeLog: (callback: (payload: { stream: 'stderr'; text: string }) => void) => () => void;
     };

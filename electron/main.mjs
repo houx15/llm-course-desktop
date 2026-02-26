@@ -2680,6 +2680,37 @@ ipcMain.handle('runtime:getLogs', async () => {
   return { stderr: runtimeStderrBuffer, logFile };
 });
 
+ipcMain.handle('bugs:collect', async () => {
+  const settings = await loadSettings();
+  const sessionsRoot = await getSessionsRoot(settings);
+  const logFile = path.join(sessionsRoot, 'sidecar.log');
+  let sidecarLogContent = '';
+  try {
+    const stat = await fs.stat(logFile);
+    // Read last 200KB of the log file
+    const maxBytes = 200 * 1024;
+    if (stat.size > maxBytes) {
+      const fh = await fs.open(logFile, 'r');
+      const buffer = Buffer.alloc(maxBytes);
+      await fh.read(buffer, 0, maxBytes, stat.size - maxBytes);
+      await fh.close();
+      sidecarLogContent = buffer.toString('utf-8');
+    } else {
+      sidecarLogContent = await fs.readFile(logFile, 'utf-8');
+    }
+  } catch {}
+  return {
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    electronVersion: process.versions.electron,
+    nodeVersion: process.versions.node,
+    sidecarStderr: runtimeStderrBuffer,
+    sidecarLogFile: logFile,
+    sidecarLogContent,
+  };
+});
+
 ipcMain.handle('runtime:createSession', async (_event, payload) => {
   const chapterId = String(payload?.chapterId || '').trim();
   const courseId = String(payload?.courseId || '').trim() || null;

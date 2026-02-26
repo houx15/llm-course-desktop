@@ -106,6 +106,7 @@ contextBridge.exposeInMainWorld('tutorApp', {
     return () => ipcRenderer.removeListener('pty:exit', listener);
   },
 
+  collectBugReport: () => ipcRenderer.invoke('bugs:collect'),
   getRuntimeLogs: () => ipcRenderer.invoke('runtime:getLogs'),
   onRuntimeLog: (callback) => {
     const listener = (_event, payload) => callback(payload);
