@@ -79,15 +79,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
       // Load version info for About tab
       try {
-        const [ver, index, logs] = await Promise.all([
+        const [ver, index, logs] = await Promise.allSettled([
           window.tutorApp!.getVersion(),
           window.tutorApp!.getBundleIndex(),
           window.tutorApp!.getRuntimeLogs(),
         ]);
-        setAppVersion(ver || '');
-        const runtimeEntry = Object.values((index?.python_runtime || {}) as Record<string, any>)[0];
-        setSidecarVersion(runtimeEntry?.version || '(未安装)');
-        setLogFile((logs as any)?.logFile || '');
+        setAppVersion(ver.status === 'fulfilled' ? (ver.value || '') : '');
+        if (index.status === 'fulfilled') {
+          const runtimeEntry = Object.values((index.value?.python_runtime || {}) as Record<string, any>)[0];
+          setSidecarVersion(runtimeEntry?.version || '(未安装)');
+        }
+        if (logs.status === 'fulfilled') {
+          setLogFile((logs.value as any)?.logFile || '');
+        }
       } catch {
         // non-fatal
       }
@@ -172,6 +176,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     setUpdateStatus('checking');
     setUpdateMessage('');
     try {
+      // Check for desktop app updates (electron-updater)
+      const appUpdate = await window.tutorApp.checkForUpdates();
+      if (appUpdate?.updateAvailable) {
+        setUpdateStatus('update-available');
+        setUpdateMessage(`发现新版本: ${appUpdate.version || '未知'}`);
+        return;
+      }
+
+      // Check for bundle/sidecar updates from backend
       const index = await window.tutorApp.getBundleIndex();
       const installed: Record<string, string> = {};
       for (const [scopeId, entry] of Object.entries((index?.python_runtime || {}) as Record<string, any>)) {
