@@ -1044,10 +1044,27 @@ const setupAutoUpdater = () => {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.allowPrerelease = true; // enable dev-to-dev upgrades (e.g. 0.1.0-dev.6 → 0.1.0-dev.8)
-  autoUpdater.logger = null; // suppress default logging
+  autoUpdater.allowPrerelease = true;
+
+  // Derive channel from version: "0.1.0-dev.11" → "dev", "1.0.0" → "latest"
+  const appVersion = app.getVersion();
+  const prereleaseMatch = appVersion.match(/-([a-zA-Z]+)/);
+  if (prereleaseMatch) {
+    autoUpdater.channel = prereleaseMatch[1]; // e.g. "dev"
+  }
+
+  console.log(`[auto-updater] version=${appVersion} channel=${autoUpdater.channel || 'latest'}`);
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[auto-updater] Checking for update...');
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log(`[auto-updater] Up to date: ${info.version}`);
+  });
 
   autoUpdater.on('update-available', (info) => {
+    console.log(`[auto-updater] Update available: ${info.version}`);
     const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
     win?.webContents?.send('app-update:available', {
       version: info.version,
@@ -1066,6 +1083,7 @@ const setupAutoUpdater = () => {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    console.log(`[auto-updater] Downloaded: ${info.version}`);
     const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
     win?.webContents?.send('app-update:downloaded', {
       version: info.version,
@@ -1074,12 +1092,14 @@ const setupAutoUpdater = () => {
   });
 
   autoUpdater.on('error', (err) => {
-    console.warn('[auto-updater] Error:', err?.message || err);
+    console.error('[auto-updater] Error:', err?.stack || err?.message || err);
   });
 
   // Check for updates on startup (after a brief delay to avoid slowing launch)
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[auto-updater] checkForUpdates failed:', err?.message || err);
+    });
   }, 10_000);
 
   // Re-check every 4 hours
