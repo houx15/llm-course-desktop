@@ -1157,7 +1157,10 @@ ipcMain.handle('app:checkForUpdates', async () => {
   if (isDev) return { updateAvailable: false };
   try {
     const result = await autoUpdater.checkForUpdates();
-    return { updateAvailable: !!result?.updateInfo, version: result?.updateInfo?.version };
+    const remoteVersion = result?.updateInfo?.version;
+    const currentVersion = app.getVersion();
+    const hasUpdate = remoteVersion && remoteVersion !== currentVersion;
+    return { updateAvailable: !!hasUpdate, version: remoteVersion };
   } catch {
     return { updateAvailable: false };
   }
