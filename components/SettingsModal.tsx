@@ -377,6 +377,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                   <Key size={16} className="text-blue-500" /> 模型 API 配置
                 </h3>
 
+                {saveHint && (
+                  <div className="px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
+                    {saveHint}
+                  </div>
+                )}
+
+                {notice && activeTab === 'api' && (
+                  <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 font-medium">
+                    {notice}
+                  </div>
+                )}
+
                 <div className="mb-6 space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase">选择服务提供商</label>
                   <div className="relative">
@@ -598,13 +610,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           </div>
         </div>
 
-        <div className="p-4 border-t border-gray-200 bg-gray-50 flex flex-col gap-2">
-          {notice && (
-            <p className="text-sm text-red-600 text-center">{notice}</p>
-          )}
-          {saveHint && (
-            <p className="text-sm text-green-600 text-center">{saveHint}</p>
-          )}
+        <div className="p-4 border-t border-gray-200 bg-gray-50">
           <div className="flex justify-end gap-3">
             <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
               取消
