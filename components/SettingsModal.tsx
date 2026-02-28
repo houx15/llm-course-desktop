@@ -177,11 +177,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         await window.tutorApp.clearAuth();
       }
 
-      // If the active provider's key was changed, show a hint before closing
+      // If the active provider's key was changed, show hint instead of closing
       if (activeKey && activeKey !== originalKey) {
         setNotice('');
         setSaveHint('保存成功。API Key 会在下次进入章节时生效。');
-        setTimeout(() => { setSaveHint(''); onClose(); }, 2000);
+        // Update loadedKeys so re-saving won't show the hint again
+        setLoadedKeys((prev) => ({ ...prev, [activeProviderId]: activeKey }));
         return;
       }
 
