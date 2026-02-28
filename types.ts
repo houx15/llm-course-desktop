@@ -125,6 +125,9 @@ declare global {
       getVersion: () => Promise<string>;
       openExternal: (url: string) => Promise<boolean>;
       relaunchApp: () => Promise<void>;
+      checkForUpdates: () => Promise<{ updateAvailable: boolean; version?: string }>;
+      installUpdate: () => Promise<{ error?: string }>;
+      onUpdateDownloaded: (callback: (payload: { version: string }) => void) => () => void;
       getSettings: () => Promise<{
         storageRoot: string;
         rememberLogin: boolean;
