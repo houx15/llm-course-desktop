@@ -194,6 +194,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         setSaveHint('保存成功。API 配置会在下次进入章节时生效。');
         setLoadedApiSnapshot(currentSnapshot);
         setLoadedKeys((prev) => ({ ...prev, [activeProviderId]: activeKey }));
+        setTestStatus('idle');
+        setTestError('');
+        setKeyTested(false);
         return;
       }
 
