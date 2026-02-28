@@ -63,21 +63,6 @@ const mapProvider = (providerId: string) => {
 
 const SIDECAR_BASE_URL = 'http://127.0.0.1:8000';
 
-let lastStartedConfigFingerprint: string | null = null;
-
-const computeConfigFingerprint = async (): Promise<string> => {
-  if (!window.tutorApp) return '';
-  const settings = await window.tutorApp.getSettings();
-  const activeProvider = settings.activeProvider || 'gpt';
-  const providerMeta = mapProvider(activeProvider);
-  const modelConfig = settings.modelConfigs?.[activeProvider];
-  const model = modelConfig?.model || providerMeta.defaultModel;
-  const keyResult = await window.tutorApp.getLlmKey(activeProvider);
-  const baseUrl = settings.llmBaseUrl || providerMeta.baseUrl || '';
-  const format = providerMeta.llmProvider;
-  return `${activeProvider}|${model}|${baseUrl}|${format}|${keyResult.key || ''}`;
-};
-
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '');
 
 const parseSsePayload = (raw: string): RawStreamEvent | null => {
@@ -251,8 +236,6 @@ export const runtimeManager = {
       if (!runtimeResult.started) {
         return { ...runtimeResult, failureStage: 'runtime_start' };
       }
-      // Record config fingerprint on successful start
-      try { lastStartedConfigFingerprint = await computeConfigFingerprint(); } catch { /* ignore */ }
       return runtimeResult;
     } catch (err) {
       return {
@@ -298,29 +281,16 @@ export const runtimeManager = {
       return { started: true };
     }
 
-    // Check if config changed since last start — if so, restart with new config.
-    let configChanged = false;
-    try {
-      const currentFingerprint = await computeConfigFingerprint();
-      if (lastStartedConfigFingerprint && currentFingerprint !== lastStartedConfigFingerprint) {
-        configChanged = true;
-        console.warn('[runtimeManager] Config changed, restarting sidecar...');
-        await this.stop();
+    const health = await this.health();
+    if (health.healthy) {
+      const preflight = await this.preflight();
+      if (preflight.ok) {
+        return { started: true };
       }
-    } catch { /* ignore fingerprint errors */ }
-
-    if (!configChanged) {
-      const health = await this.health();
-      if (health.healthy) {
-        const preflight = await this.preflight();
-        if (preflight.ok) {
-          return { started: true };
-        }
-        return {
-          started: false,
-          reason: preflight.reason || `Sidecar preflight failed (${preflight.phase || 'unknown'})`,
-        };
-      }
+      return {
+        started: false,
+        reason: preflight.reason || `Sidecar preflight failed (${preflight.phase || 'unknown'})`,
+      };
     }
 
     const started = await this.start();

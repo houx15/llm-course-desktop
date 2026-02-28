@@ -191,7 +191,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       // Check if any API-related setting changed
       if (currentSnapshot !== loadedApiSnapshot) {
         setNotice('');
-        setSaveHint('保存成功。API 配置会在下次进入章节时生效。');
+        setSaveHint('保存成功。新的 API 配置会在下次启动软件时生效。');
         setLoadedApiSnapshot(currentSnapshot);
         setLoadedKeys((prev) => ({ ...prev, [activeProviderId]: activeKey }));
         setTestStatus('idle');
