@@ -337,26 +337,10 @@ const App: React.FC = () => {
         console.warn('App update check failed:', err);
       }
 
-      // Step 1: Ensure sidecar bundle is installed (download only, no runtime start).
-      // This lets the onboarding modal test API keys against the sidecar later.
-      setShowSidecarDownload(true);
-      try {
-        const sidecar = await runtimeManager.ensureSidecarBundle();
-        if (sidecar.needsRestart) {
-          sidecarNeedsRestartRef.current = true;
-          return;
-        }
-        if (!sidecar.ready) {
-          // Keep overlay for manual retry on sidecar install failures
-          return;
-        }
-      } catch (err) {
-        console.warn('Sidecar bundle setup failed:', err);
-        return;
-      }
-      setShowSidecarDownload(false);
-
-      // Step 2: Check whether an LLM key is configured. If not, show onboarding.
+      // Check whether an LLM key is configured for the active provider.
+      // If not, show the onboarding modal instead of starting the runtime.
+      // The test button calls the LLM API directly from the main process,
+      // so it does not need the sidecar.
       if (window.tutorApp) {
         try {
           const settings = await window.tutorApp.getSettings();
@@ -371,7 +355,7 @@ const App: React.FC = () => {
         }
       }
 
-      // Step 3: Start sidecar runtime
+      // Step 2: Install sidecar bundle + start runtime
       await startSidecarRuntime();
     } finally {
       startupInFlightRef.current = false;
