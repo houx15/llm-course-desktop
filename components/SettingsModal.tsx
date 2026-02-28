@@ -42,6 +42,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'fail'>('idle');
   const [testError, setTestError] = useState('');
   const [loadedKeys, setLoadedKeys] = useState<Record<string, string>>({});
+  const [saveHint, setSaveHint] = useState('');
 
   // About tab state
   const [appVersion, setAppVersion] = useState('');
@@ -174,6 +175,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
       if (!rememberLogin) {
         await window.tutorApp.clearAuth();
+      }
+
+      // If the active provider's key was changed, show a hint before closing
+      if (activeKey && activeKey !== originalKey) {
+        setNotice('');
+        setSaveHint('保存成功。API Key 会在下次进入章节时生效。');
+        setTimeout(() => { setSaveHint(''); onClose(); }, 2000);
+        return;
       }
 
       onClose();
@@ -591,6 +600,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex flex-col gap-2">
           {notice && (
             <p className="text-sm text-red-600 text-center">{notice}</p>
+          )}
+          {saveHint && (
+            <p className="text-sm text-green-600 text-center">{saveHint}</p>
           )}
           <div className="flex justify-end gap-3">
             <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
