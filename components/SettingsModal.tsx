@@ -41,6 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [notice, setNotice] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'fail'>('idle');
   const [testError, setTestError] = useState('');
+  const [keyTested, setKeyTested] = useState(false); // true once current key passes test
   const [loadedKeys, setLoadedKeys] = useState<Record<string, string>>({});
   const [loadedApiSnapshot, setLoadedApiSnapshot] = useState('');
   const [saveHint, setSaveHint] = useState('');
@@ -88,6 +89,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setLoadedApiSnapshot(`${providerId}|${fmt}|${base}|${model}|${keys[providerId] || ''}`);
       setTestStatus('idle');
       setTestError('');
+      setKeyTested(false);
       setSaveHint('');
       setNotice('');
 
@@ -126,6 +128,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     }));
     setTestStatus('idle');
     setTestError('');
+    if (field === 'key') setKeyTested(false);
   };
 
   const handleChooseStorageRoot = async () => {
@@ -148,7 +151,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     // Block save if the active provider's key was changed but not tested
     const activeKey = configs[activeProviderId]?.key || '';
     const originalKey = loadedKeys[activeProviderId] || '';
-    if (activeKey && activeKey !== originalKey && testStatus !== 'success') {
+    if (activeKey && activeKey !== originalKey && !keyTested) {
       setNotice('请先测试当前 API Key 再保存');
       setActiveTab('api');
       return;
@@ -259,6 +262,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       });
       if (result.ok) {
         setTestStatus('success');
+        setKeyTested(true);
       } else {
         setTestStatus('fail');
         setTestError(result.error || '测试失败');
@@ -411,6 +415,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                         setShowKey(false);
                         setTestStatus('idle');
                         setTestError('');
+                        setKeyTested(false);
                       }}
                       className="w-full appearance-none pl-4 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
                     >
