@@ -42,6 +42,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'fail'>('idle');
   const [testError, setTestError] = useState('');
   const [loadedKeys, setLoadedKeys] = useState<Record<string, string>>({});
+  const [loadedApiSnapshot, setLoadedApiSnapshot] = useState('');
   const [saveHint, setSaveHint] = useState('');
 
   // About tab state
@@ -80,8 +81,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       const keys: Record<string, string> = {};
       for (const provider of PROVIDERS) keys[provider.id] = mergedConfigs[provider.id]?.key || '';
       setLoadedKeys(keys);
+      // Snapshot all API-related settings to detect any change on save
+      const fmt = settings.llmFormat || presetProvider?.llmFormat || 'custom';
+      const base = settings.llmBaseUrl !== undefined ? settings.llmBaseUrl : (presetProvider?.baseUrl || '');
+      const model = mergedConfigs[providerId]?.model || '';
+      setLoadedApiSnapshot(`${providerId}|${fmt}|${base}|${model}|${keys[providerId] || ''}`);
       setTestStatus('idle');
       setTestError('');
+      setSaveHint('');
       setNotice('');
 
       // Load version info for About tab
@@ -177,11 +184,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         await window.tutorApp.clearAuth();
       }
 
-      // If the active provider's key was changed, show hint instead of closing
-      if (activeKey && activeKey !== originalKey) {
+      // Check if any API-related setting changed
+      const activeModel = configs[activeProviderId]?.model || '';
+      const currentSnapshot = `${activeProviderId}|${llmFormat}|${llmBaseUrl}|${activeModel}|${activeKey}`;
+      if (currentSnapshot !== loadedApiSnapshot) {
         setNotice('');
-        setSaveHint('保存成功。API Key 会在下次进入章节时生效。');
-        // Update loadedKeys so re-saving won't show the hint again
+        setSaveHint('保存成功。API 配置会在下次进入章节时生效。');
+        setLoadedApiSnapshot(currentSnapshot);
         setLoadedKeys((prev) => ({ ...prev, [activeProviderId]: activeKey }));
         return;
       }
