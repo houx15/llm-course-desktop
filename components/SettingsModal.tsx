@@ -41,6 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [notice, setNotice] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'fail'>('idle');
   const [testError, setTestError] = useState('');
+  const [loadedKeys, setLoadedKeys] = useState<Record<string, string>>({});
 
   // About tab state
   const [appVersion, setAppVersion] = useState('');
@@ -75,6 +76,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         };
       }
       setConfigs(mergedConfigs);
+      const keys: Record<string, string> = {};
+      for (const provider of PROVIDERS) keys[provider.id] = mergedConfigs[provider.id]?.key || '';
+      setLoadedKeys(keys);
+      setTestStatus('idle');
+      setTestError('');
       setNotice('');
 
       // Load version info for About tab
@@ -128,6 +134,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
   const handleSave = async () => {
     if (!window.tutorApp) {
+      return;
+    }
+
+    // Block save if the active provider's key was changed but not tested
+    const activeKey = configs[activeProviderId]?.key || '';
+    const originalKey = loadedKeys[activeProviderId] || '';
+    if (activeKey && activeKey !== originalKey && testStatus !== 'success') {
+      setNotice('请先测试当前 API Key 再保存');
+      setActiveTab('api');
       return;
     }
 
