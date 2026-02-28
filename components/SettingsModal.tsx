@@ -148,10 +148,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       return;
     }
 
-    // Block save if the active provider's key was changed but not tested
+    // Block save if API config changed but the key hasn't been tested
     const activeKey = configs[activeProviderId]?.key || '';
-    const originalKey = loadedKeys[activeProviderId] || '';
-    if (activeKey && activeKey !== originalKey && !keyTested) {
+    const activeModel = configs[activeProviderId]?.model || '';
+    const currentSnapshot = `${activeProviderId}|${llmFormat}|${llmBaseUrl}|${activeModel}|${activeKey}`;
+    if (activeKey && currentSnapshot !== loadedApiSnapshot && !keyTested) {
       setNotice('请先测试当前 API Key 再保存');
       setActiveTab('api');
       return;
@@ -188,8 +189,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       }
 
       // Check if any API-related setting changed
-      const activeModel = configs[activeProviderId]?.model || '';
-      const currentSnapshot = `${activeProviderId}|${llmFormat}|${llmBaseUrl}|${activeModel}|${activeKey}`;
       if (currentSnapshot !== loadedApiSnapshot) {
         setNotice('');
         setSaveHint('保存成功。API 配置会在下次进入章节时生效。');
