@@ -162,6 +162,7 @@ declare global {
       saveLlmKey: (provider: string, key: string) => Promise<{ saved: boolean }>;
       getLlmKey: (provider: string) => Promise<{ key: string }>;
       deleteLlmKey: (provider: string) => Promise<{ deleted: boolean }>;
+      testLlmKey: (payload: { format: string; baseUrl: string; apiKey: string; model: string }) => Promise<{ ok: boolean; error?: string }>;
       backendRequest: (payload: {
         method?: string;
         path: string;

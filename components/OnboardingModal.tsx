@@ -31,13 +31,14 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
   const [providerId, setProviderId] = useState('gpt');
   const [llmFormat, setLlmFormat] = useState('openai');
   const [llmBaseUrl, setLlmBaseUrl] = useState('');
-  const [llmModel, setLlmModel] = useState('gpt-4o');
+  const [llmModel, setLlmModel] = useState(PROVIDERS.find(p => p.id === 'gpt')?.defaultModel ?? 'gpt-5-mini');
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [storageRoot, setStorageRoot] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [storageWarnings, setStorageWarnings] = useState<string[]>([]);
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'fail'>('idle');
 
   // Load current storageRoot default on mount
   useEffect(() => {
@@ -48,6 +49,9 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
   }, []);
 
   const provider = PROVIDERS.find((p) => p.id === providerId) || PROVIDERS[0];
+
+  // Reset test status when any config field changes
+  const resetTest = () => { setTestStatus('idle'); setError(null); };
 
   const handleChooseStorage = async () => {
     if (!window.tutorApp) return;
@@ -65,21 +69,43 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
     }
   };
 
+  const handleTest = async () => {
+    if (!apiKey.trim() || !window.tutorApp?.testLlmKey) return;
+    setTestStatus('testing');
+    setError(null);
+    try {
+      const result = await window.tutorApp.testLlmKey({
+        format: llmFormat,
+        baseUrl: llmBaseUrl,
+        apiKey: apiKey.trim(),
+        model: llmModel || provider.defaultModel,
+      });
+      if (result.ok) {
+        setTestStatus('success');
+      } else {
+        setTestStatus('fail');
+        setError(result.error || '测试失败');
+      }
+    } catch (err) {
+      setTestStatus('fail');
+      setError(err instanceof Error ? err.message : '测试失败');
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!apiKey.trim() || saving || !window.tutorApp) return;
+    if (!apiKey.trim() || saving || !window.tutorApp || testStatus !== 'success') return;
     setSaving(true);
     setError(null);
     try {
       const currentSettings = await window.tutorApp.getSettings();
       // Save LLM key to secure storage
       await window.tutorApp.saveLlmKey(providerId, apiKey.trim());
-      // Save settings: activeProvider, storageRoot, rememberKeys, modelConfigs
+      // Save settings: activeProvider, storageRoot, modelConfigs
       await window.tutorApp.setSettings({
         activeProvider: providerId,
         storageRoot,
         llmFormat,
         llmBaseUrl,
-        rememberKeys: { ...currentSettings.rememberKeys, [providerId]: true },
         modelConfigs: { ...currentSettings.modelConfigs, [providerId]: { model: llmModel || provider.defaultModel } },
       });
       onComplete();
@@ -87,6 +113,28 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const buttonLabel = (() => {
+    if (saving) return 'Saving…';
+    if (testStatus === 'testing') return '测试中...';
+    if (testStatus === 'success') return '测试成功，开始学习';
+    if (testStatus === 'fail') return '测试失败，检查一下参数吧';
+    return '测试一下';
+  })();
+
+  const buttonClass = (() => {
+    if (testStatus === 'success') return 'bg-green-600 hover:bg-green-700';
+    if (testStatus === 'fail') return 'bg-red-500 hover:bg-red-600';
+    return 'bg-blue-600 hover:bg-blue-700';
+  })();
+
+  const handleButtonClick = () => {
+    if (testStatus === 'success') {
+      handleSubmit();
+    } else if (testStatus !== 'testing' && !saving) {
+      handleTest();
     }
   };
 
@@ -112,6 +160,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
                 const p = PROVIDERS.find((x) => x.id === pid);
                 if (p) { setLlmFormat(p.llmFormat); setLlmBaseUrl(p.baseUrl); setLlmModel(p.defaultModel); }
                 setApiKey(''); setShowKey(false);
+                resetTest();
               }}
             >
               {PROVIDERS.map((p) => (
@@ -130,7 +179,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
               <select
                 className="w-full appearance-none px-3 py-2 pr-8 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none"
                 value={llmFormat}
-                onChange={(e) => setLlmFormat(e.target.value)}
+                onChange={(e) => { setLlmFormat(e.target.value); resetTest(); }}
               >
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
@@ -146,7 +195,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono bg-white focus:ring-2 focus:ring-blue-500 outline-none"
               placeholder="https://api.openai.com"
               value={llmBaseUrl}
-              onChange={(e) => setLlmBaseUrl(e.target.value)}
+              onChange={(e) => { setLlmBaseUrl(e.target.value); resetTest(); }}
             />
           </div>
         </div>
@@ -159,7 +208,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono bg-white focus:ring-2 focus:ring-blue-500 outline-none"
             placeholder="e.g. gpt-4o"
             value={llmModel}
-            onChange={(e) => setLlmModel(e.target.value)}
+            onChange={(e) => { setLlmModel(e.target.value); resetTest(); }}
           />
         </div>
 
@@ -182,7 +231,7 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
               className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg text-sm font-mono bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               placeholder="Paste your API key"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => { setApiKey(e.target.value); resetTest(); }}
               autoFocus
             />
             <button
@@ -231,11 +280,11 @@ export const OnboardingModal: React.FC<Props> = ({ onComplete }) => {
 
         <button
           type="button"
-          disabled={!apiKey.trim() || saving}
-          onClick={handleSubmit}
-          className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-40 hover:bg-blue-700 transition-colors"
+          disabled={!apiKey.trim() || testStatus === 'testing' || saving}
+          onClick={handleButtonClick}
+          className={`w-full py-3 rounded-xl text-white font-semibold disabled:opacity-40 transition-colors ${buttonClass}`}
         >
-          {saving ? 'Saving…' : 'Get Started'}
+          {buttonLabel}
         </button>
       </div>
     </div>

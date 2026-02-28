@@ -268,10 +268,68 @@ const App: React.FC = () => {
 
   }, []);
 
+  const startSidecarRuntime = async () => {
+    setShowSidecarDownload(true);
+    sidecarNeedsRestartRef.current = false;
+    try {
+      const runtimeResult = await runtimeManager.start();
+      if (runtimeResult.needsRestart) {
+        sidecarNeedsRestartRef.current = true;
+        return;
+      }
+      if (!runtimeResult.started) {
+        // Sidecar-stage failures (download/install): keep overlay for manual retry
+        if (runtimeResult.failureStage === 'sidecar') {
+          return;
+        }
+        // Runtime-stage failures (health/preflight): auto-retry up to 5 times
+        let lastReason = runtimeResult.reason || '本地运行时启动失败';
+        let succeeded = false;
+        for (let attempt = 2; attempt <= 5; attempt++) {
+          console.warn(`[startup] Runtime start failed (attempt ${attempt - 1}/5): ${lastReason}`);
+          await new Promise((r) => setTimeout(r, 3000));
+          try {
+            const retry = await runtimeManager.start();
+            if (retry.started) {
+              succeeded = true;
+              break;
+            }
+            lastReason = retry.reason || '本地运行时启动失败';
+          } catch (retryErr) {
+            lastReason = retryErr instanceof Error ? retryErr.message : '本地运行时启动失败';
+          }
+        }
+        if (!succeeded) {
+          console.warn(`[startup] Runtime start failed after 5 attempts: ${lastReason}`);
+          setRuntimeNotice(lastReason);
+          if (!sidecarNeedsRestartRef.current) {
+            setShowSidecarDownload(false);
+          }
+          return;
+        }
+      }
+      if (!sidecarNeedsRestartRef.current) {
+        setRuntimeNotice('');
+        setShowSidecarDownload(false);
+      }
+    } catch (err) {
+      console.warn('Runtime start failed:', err);
+      setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
+      if (!sidecarNeedsRestartRef.current) {
+        setShowSidecarDownload(false);
+      }
+    }
+
+    try {
+      await syncQueue.flushAll();
+    } catch (err) {
+      console.warn('Initial sync flush failed:', err);
+    }
+  };
+
   const startupAfterLogin = async () => {
     if (startupInFlightRef.current) return;
     startupInFlightRef.current = true;
-    sidecarNeedsRestartRef.current = false;
     try {
       try {
         await updateManager.syncAppBundles();
@@ -279,8 +337,26 @@ const App: React.FC = () => {
         console.warn('App update check failed:', err);
       }
 
-      // Check whether an LLM key is configured for the active provider.
-      // If not, show the onboarding modal instead of starting the runtime.
+      // Step 1: Ensure sidecar bundle is installed (download only, no runtime start).
+      // This lets the onboarding modal test API keys against the sidecar later.
+      setShowSidecarDownload(true);
+      try {
+        const sidecar = await runtimeManager.ensureSidecarBundle();
+        if (sidecar.needsRestart) {
+          sidecarNeedsRestartRef.current = true;
+          return;
+        }
+        if (!sidecar.ready) {
+          // Keep overlay for manual retry on sidecar install failures
+          return;
+        }
+      } catch (err) {
+        console.warn('Sidecar bundle setup failed:', err);
+        return;
+      }
+      setShowSidecarDownload(false);
+
+      // Step 2: Check whether an LLM key is configured. If not, show onboarding.
       if (window.tutorApp) {
         try {
           const settings = await window.tutorApp.getSettings();
@@ -295,71 +371,21 @@ const App: React.FC = () => {
         }
       }
 
-      // Always show overlay during sidecar setup+start.
-      // runtimeManager.start() handles sidecar readiness checks.
-      setShowSidecarDownload(true);
-      try {
-        const runtimeResult = await runtimeManager.start();
-        if (runtimeResult.needsRestart) {
-          sidecarNeedsRestartRef.current = true;
-          return;
-        }
-        if (!runtimeResult.started) {
-          // Sidecar-stage failures (download/install): keep overlay for manual retry
-          if (runtimeResult.failureStage === 'sidecar') {
-            return;
-          }
-          // Runtime-stage failures (health/preflight): auto-retry up to 5 times
-          let lastReason = runtimeResult.reason || '本地运行时启动失败';
-          let succeeded = false;
-          for (let attempt = 2; attempt <= 5; attempt++) {
-            console.warn(`[startup] Runtime start failed (attempt ${attempt - 1}/5): ${lastReason}`);
-            await new Promise((r) => setTimeout(r, 3000));
-            try {
-              const retry = await runtimeManager.start();
-              if (retry.started) {
-                succeeded = true;
-                break;
-              }
-              lastReason = retry.reason || '本地运行时启动失败';
-            } catch (retryErr) {
-              lastReason = retryErr instanceof Error ? retryErr.message : '本地运行时启动失败';
-            }
-          }
-          if (!succeeded) {
-            console.warn(`[startup] Runtime start failed after 5 attempts: ${lastReason}`);
-            setRuntimeNotice(lastReason);
-            if (!sidecarNeedsRestartRef.current) {
-              setShowSidecarDownload(false);
-            }
-            return;
-          }
-        }
-        if (!sidecarNeedsRestartRef.current) {
-          setRuntimeNotice('');
-          setShowSidecarDownload(false);
-        }
-      } catch (err) {
-        console.warn('Runtime start failed:', err);
-        setRuntimeNotice(err instanceof Error ? err.message : '本地运行时启动失败');
-        if (!sidecarNeedsRestartRef.current) {
-          setShowSidecarDownload(false);
-        }
-      }
-
-      try {
-        await syncQueue.flushAll();
-      } catch (err) {
-        console.warn('Initial sync flush failed:', err);
-      }
+      // Step 3: Start sidecar runtime
+      await startSidecarRuntime();
     } finally {
       startupInFlightRef.current = false;
     }
   };
 
-  const handleOnboardingComplete = () => {
+  const handleOnboardingComplete = async () => {
     setShowOnboarding(false);
-    startupAfterLogin();
+    startupInFlightRef.current = true;
+    try {
+      await startSidecarRuntime();
+    } finally {
+      startupInFlightRef.current = false;
+    }
   };
 
   useEffect(() => {

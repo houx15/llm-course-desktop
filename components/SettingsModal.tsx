@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Key, HardDrive, Database, Eye, EyeOff, ExternalLink, ChevronDown, Check, Info, RefreshCw, FolderOpen, LogOut } from 'lucide-react';
+import { X, Save, Key, HardDrive, Database, Eye, EyeOff, ExternalLink, ChevronDown, Check, Info, RefreshCw, FolderOpen, LogOut, Zap } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -23,7 +23,6 @@ const PROVIDERS = [
 type ProviderConfig = {
   key: string;
   model: string;
-  rememberKey: boolean;
 };
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onLogout }) => {
@@ -40,6 +39,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [isSaving, setIsSaving] = useState(false);
   const [storageWarnings, setStorageWarnings] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'fail'>('idle');
+  const [testError, setTestError] = useState('');
 
   // About tab state
   const [appVersion, setAppVersion] = useState('');
@@ -71,7 +72,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         mergedConfigs[provider.id] = {
           key,
           model: saved?.model || provider.defaultModel,
-          rememberKey: Boolean(settings.rememberKeys?.[provider.id]),
         };
       }
       setConfigs(mergedConfigs);
@@ -102,7 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     });
   }, [isOpen]);
 
-  const updateConfig = (field: keyof ProviderConfig, value: string | boolean) => {
+  const updateConfig = (field: keyof ProviderConfig, value: string) => {
     setConfigs((prev) => ({
       ...prev,
       [activeProviderId]: {
@@ -110,6 +110,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         [field]: value,
       },
     }));
+    setTestStatus('idle');
+    setTestError('');
   };
 
   const handleChooseStorageRoot = async () => {
@@ -132,18 +134,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     setIsSaving(true);
     setNotice('');
     try {
-      const rememberKeys: Record<string, boolean> = {};
       const modelConfigs: Record<string, { model: string }> = {};
 
       for (const provider of PROVIDERS) {
-        const conf = configs[provider.id] || { key: '', model: provider.defaultModel, rememberKey: false };
-        rememberKeys[provider.id] = Boolean(conf.rememberKey);
+        const conf = configs[provider.id] || { key: '', model: provider.defaultModel };
         modelConfigs[provider.id] = { model: conf.model || provider.defaultModel };
 
-        if (conf.rememberKey && conf.key) {
+        if (conf.key) {
           await window.tutorApp.saveLlmKey(provider.id, conf.key);
-        }
-        if (!conf.rememberKey) {
+        } else {
           await window.tutorApp.deleteLlmKey(provider.id);
         }
       }
@@ -151,7 +150,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       await window.tutorApp.setSettings({
         storageRoot,
         rememberLogin,
-        rememberKeys,
         modelConfigs,
         activeProvider: activeProviderId,
         llmFormat,
@@ -212,7 +210,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   };
 
   const currentProvider = useMemo(() => PROVIDERS.find((p) => p.id === activeProviderId) || PROVIDERS[0], [activeProviderId]);
-  const currentConfig = configs[activeProviderId] || { key: '', model: currentProvider.defaultModel, rememberKey: false };
+  const currentConfig = configs[activeProviderId] || { key: '', model: currentProvider.defaultModel };
+
+  const handleTestKey = async () => {
+    if (!window.tutorApp?.testLlmKey || !currentConfig.key) return;
+    setTestStatus('testing');
+    setTestError('');
+    try {
+      const result = await window.tutorApp.testLlmKey({
+        format: llmFormat,
+        baseUrl: llmBaseUrl,
+        apiKey: currentConfig.key,
+        model: currentConfig.model || currentProvider.defaultModel,
+      });
+      if (result.ok) {
+        setTestStatus('success');
+      } else {
+        setTestStatus('fail');
+        setTestError(result.error || '测试失败');
+      }
+    } catch (err) {
+      setTestStatus('fail');
+      setTestError(err instanceof Error ? err.message : '测试失败');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -342,6 +363,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                         const p = PROVIDERS.find((x) => x.id === pid);
                         if (p) { setLlmFormat(p.llmFormat); setLlmBaseUrl(p.baseUrl); }
                         setShowKey(false);
+                        setTestStatus('idle');
+                        setTestError('');
                       }}
                       className="w-full appearance-none pl-4 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
                     >
@@ -361,7 +384,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                     <div className="relative">
                       <select
                         value={llmFormat}
-                        onChange={(e) => setLlmFormat(e.target.value)}
+                        onChange={(e) => { setLlmFormat(e.target.value); setTestStatus('idle'); setTestError(''); }}
                         className="w-full appearance-none px-3 py-2 pr-8 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
                       >
                         <option value="openai">OpenAI</option>
@@ -376,7 +399,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                     <input
                       type="text"
                       value={llmBaseUrl}
-                      onChange={(e) => setLlmBaseUrl(e.target.value)}
+                      onChange={(e) => { setLlmBaseUrl(e.target.value); setTestStatus('idle'); setTestError(''); }}
                       placeholder="https://api.openai.com"
                       className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
                     />
@@ -417,14 +440,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                     </div>
                   </div>
 
-                  <label className="flex items-center gap-2 text-sm text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={currentConfig.rememberKey}
-                      onChange={(e) => updateConfig('rememberKey', e.target.checked)}
-                    />
-                    记住此 Provider Key（保存到系统安全存储）
-                  </label>
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      disabled={!currentConfig.key || testStatus === 'testing'}
+                      onClick={handleTestKey}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40 ${
+                        testStatus === 'success'
+                          ? 'bg-green-50 text-green-700 border border-green-200'
+                          : testStatus === 'fail'
+                          ? 'bg-red-50 text-red-700 border border-red-200'
+                          : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                      }`}
+                    >
+                      <Zap size={12} className={testStatus === 'testing' ? 'animate-pulse' : ''} />
+                      {testStatus === 'testing' ? '测试中...' :
+                       testStatus === 'success' ? '测试成功' :
+                       testStatus === 'fail' ? '测试失败' : '测试连接'}
+                    </button>
+                    {testStatus === 'fail' && testError && (
+                      <span className="text-[11px] text-red-500 truncate max-w-[260px]" title={testError}>{testError}</span>
+                    )}
+                  </div>
 
                   <div className="pt-2">
                     <a
@@ -441,7 +478,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
                 <div className="mt-4 flex items-start gap-2 text-xs text-gray-400 bg-gray-50 p-3 rounded-lg">
                   <Check size={14} className="mt-0.5 text-green-500 shrink-0" />
-                  <p>API Key 不会存入 localStorage。仅在你勾选“记住”后写入系统安全存储。</p>
+                  <p>API Key 保存在系统安全存储中，不会存入 localStorage。</p>
                 </div>
               </div>
             )}

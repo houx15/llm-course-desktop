@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('tutorApp', {
   saveLlmKey: (provider, key) => ipcRenderer.invoke('secrets:saveLlmKey', { provider, key }),
   getLlmKey: (provider) => ipcRenderer.invoke('secrets:getLlmKey', provider),
   deleteLlmKey: (provider) => ipcRenderer.invoke('secrets:deleteLlmKey', provider),
+  testLlmKey: (payload) => ipcRenderer.invoke('llm:testKey', payload),
 
   backendRequest: (payload) => ipcRenderer.invoke('backend:request', payload),
 

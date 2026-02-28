@@ -1322,6 +1322,70 @@ ipcMain.handle('secrets:deleteLlmKey', async (_event, provider) => {
   return { deleted: true };
 });
 
+ipcMain.handle('llm:testKey', async (_event, payload) => {
+  const { format, baseUrl, apiKey, model } = payload || {};
+  if (!apiKey) return { ok: false, error: 'API key is required' };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+
+  try {
+    let url, headers, body;
+
+    if (format === 'anthropic') {
+      url = `${(baseUrl || 'https://api.anthropic.com').replace(/\/+$/, '')}/v1/messages`;
+      headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      };
+      body = JSON.stringify({
+        model: model || 'claude-haiku-4-5-20251001',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Hi' }],
+      });
+    } else if (format === 'openai') {
+      url = `${(baseUrl || 'https://api.openai.com').replace(/\/+$/, '')}/v1/chat/completions`;
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      };
+      body = JSON.stringify({
+        model: model || 'gpt-4o-mini',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Hi' }],
+      });
+    } else {
+      // custom (OpenAI-compatible)
+      if (!baseUrl) return { ok: false, error: 'Base URL is required for custom format' };
+      url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      };
+      body = JSON.stringify({
+        model: model || 'gpt-4o-mini',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Hi' }],
+      });
+    }
+
+    const resp = await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      let detail = '';
+      try { detail = JSON.parse(text)?.error?.message || text; } catch { detail = text; }
+      return { ok: false, error: `HTTP ${resp.status}: ${detail}`.slice(0, 500) };
+    }
+    return { ok: true };
+  } catch (err) {
+    if (err?.name === 'AbortError') return { ok: false, error: 'Request timed out (30s)' };
+    return { ok: false, error: err?.message || 'Unknown error' };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 ipcMain.handle('backend:request', async (_event, payload) => {
   return requestBackend(payload || {});
 });
