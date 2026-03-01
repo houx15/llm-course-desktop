@@ -431,8 +431,7 @@ const App: React.FC = () => {
       setActiveCourseId(courseId);
       setView('course');
       // Reset course internal navigation
-      const courseCode = myCourses.find((c) => c.id === courseId)?.code;
-      const loadedPhases = await courseService.getCoursePhases(courseId, courseCode);
+      const loadedPhases = await courseService.getCoursePhases(courseId);
       setPhases(loadedPhases);
       setChapterRuntimeState({});
       setCurrentPhase(loadedPhases[0] || null);

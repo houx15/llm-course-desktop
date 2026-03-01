@@ -53,7 +53,7 @@ const mapCourseSummary = (course: BackendCourseSummary): CourseSummary => ({
   joinedAt: course.joined_at,
 });
 
-const mapChapter = (_courseCode: string, chapter: BackendChapter): Chapter => ({
+const mapChapter = (chapter: BackendChapter): Chapter => ({
   id: chapter.id,  // UUID from backend
   title: chapter.title,
   status: chapter.status,
@@ -69,10 +69,10 @@ export const courseService = {
     return response.courses.map(mapCourseSummary);
   },
 
-  async joinCourse(courseCode: string): Promise<CourseSummary> {
+  async joinCourse(inviteCode: string): Promise<CourseSummary> {
     const response = await backendClient.post<{ course: BackendCourseSummary }>(
       '/v1/courses/join',
-      { course_code: courseCode },
+      { invite_code: inviteCode },
       true
     );
     return mapCourseSummary(response.course);
@@ -90,9 +90,8 @@ export const courseService = {
     return response.chapters;
   },
 
-  async getCoursePhases(courseId: string, courseCode?: string): Promise<Phase[]> {
+  async getCoursePhases(courseId: string): Promise<Phase[]> {
     const [course, chapters] = await Promise.all([this.getCourse(courseId), this.listChapters(courseId)]);
-    const scopePrefix = courseCode || courseId;
 
     return [
       {
@@ -105,7 +104,7 @@ export const courseService = {
           necessity: course.overview?.necessity || course.description || '',
           journey: course.overview?.journey || '',
         },
-        chapters: chapters.sort((a, b) => a.order - b.order).map((chapter) => mapChapter(scopePrefix, chapter)),
+        chapters: chapters.sort((a, b) => a.order - b.order).map((chapter) => mapChapter(chapter)),
       },
     ];
   },
