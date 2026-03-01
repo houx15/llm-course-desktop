@@ -1936,20 +1936,21 @@ ipcMain.handle('curriculum:getCourseOverview', async (_event, payload) => {
 
 ipcMain.handle('curriculum:getChapterContent', async (_event, payload) => {
   const { courseId, chapterId } = payload || {};
-  if (!courseId || !chapterId) {
-    throw new Error('Missing courseId or chapterId');
+  if (!chapterId) {
+    throw new Error('Missing chapterId');
   }
 
   const indexData = await loadIndex();
-  const curriculumEntries = Object.entries(indexData.curriculum || {});
-  if (curriculumEntries.length === 0) {
-    throw new Error('No curriculum bundle installed');
+
+  // Look up chapter bundle by UUID (chapterId is now UUID)
+  const chapterEntry = indexData?.chapter?.[chapterId];
+  if (!chapterEntry?.path) {
+    throw new Error('Chapter bundle not installed');
   }
 
-  const [, entry] = curriculumEntries[0];
-  const chapterRoot = path.join(entry.path, 'content', 'curriculum', sanitizeSegment(courseId), sanitizeSegment(chapterId));
+  const promptsDir = path.join(chapterEntry.path, 'prompts');
   const read = async (name) => {
-    const filePath = path.join(chapterRoot, name);
+    const filePath = path.join(promptsDir, name);
     return fs.readFile(filePath, 'utf-8');
   };
   const readOptional = async (name) => {
@@ -2104,11 +2105,6 @@ const seedWorkspaceFromCurriculumIfNeeded = async (rawChapterId, chapterDir) => 
     return;
   }
 
-  const { courseId, chapterCode } = splitChapterId(rawChapterId);
-  if (!courseId || !chapterCode) {
-    return;
-  }
-
   const indexData = await loadIndex();
 
   // Copy files recursively from srcDir into destDir, skipping dotfiles, .md, and manifest files.
@@ -2147,21 +2143,8 @@ const seedWorkspaceFromCurriculumIfNeeded = async (rawChapterId, chapterDir) => 
     }
   };
 
-  // 1. Seed from curriculum bundle (agent prompts, task lists, etc.)
-  const curriculumEntries = Object.entries(indexData?.curriculum || {}).filter(([, entry]) => entry?.path);
-  if (curriculumEntries.length > 0) {
-    const sourceRoot = path.join(curriculumEntries[0][1].path, 'content', 'curriculum', courseId, chapterCode);
-    if (await pathExists(sourceRoot)) {
-      await copyRecursive(sourceRoot, chapterDir);
-    }
-  }
-
-  // 2. Seed code/ and dataset(s)/ from the chapter-specific bundle.
-  //    The chapter bundle scope_id matches rawChapterId (e.g. "COURSE_CODE/chapter_code").
-  const chapterBundleKey = `${courseId}/${chapterCode}`;
-  const chapterEntry =
-    (indexData?.chapter || {})[rawChapterId] ||
-    (indexData?.chapter || {})[chapterBundleKey];
+  // Look up chapter bundle by UUID (rawChapterId is now a UUID)
+  const chapterEntry = (indexData?.chapter || {})[rawChapterId];
   if (chapterEntry?.path) {
     for (const subDir of ['code', 'dataset', 'datasets']) {
       const srcSubDir = path.join(chapterEntry.path, subDir);
@@ -2611,7 +2594,7 @@ const startRuntimeInternal = async (config, options = {}) => {
     LLM_API_KEY: runtimeConfig?.llmApiKey || '',
     LLM_MODEL: runtimeConfig?.llmModel || '',
     LLM_BASE_URL: effectiveLlmBaseUrl,
-    CURRICULUM_DIR: curriculumBundle ? path.join(curriculumBundle, 'content', 'curriculum') : '',
+    CURRICULUM_DIR: '', // Deprecated — sidecar reads from desktop_context.bundle_paths.chapter_bundle_path
     EXPERTS_DIR: expertsBundle ? path.join(expertsBundle, 'experts') : '',
     MAIN_AGENTS_DIR: appAgentsBundle ? path.join(appAgentsBundle, 'content', 'agents') : process.env.MAIN_AGENTS_DIR || '',
     CURRICULUM_TEMPLATES_DIR: templatesBundlePath || '',

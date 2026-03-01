@@ -35,15 +35,25 @@ const getInstalledVersionsForApp = (indexData: any): Record<string, string> => {
     ? String((pythonRuntimeEntries[0][1] as any).version)
     : '';
 
-  return {
+  const installed: Record<string, string> = {
     app_agents: indexData?.app_agents?.core?.version || '',
     experts_shared: indexData?.experts_shared?.shared?.version || '',
     python_runtime: pythonRuntimeVersion,
   };
+
+  // Include individual expert bundle versions
+  const expertsMap = indexData?.experts || {};
+  Object.entries(expertsMap).forEach(([expertId, info]) => {
+    const value = info as { version?: string };
+    if (value?.version) {
+      installed[`experts:${expertId}`] = value.version;
+    }
+  });
+
+  return installed;
 };
 
-const getInstalledVersionsForChapter = (indexData: any, courseId: string, chapterId: string) => {
-  const scopeId = `${courseId}/${chapterId}`;
+const getInstalledVersionsForChapter = (indexData: any, _courseId: string, chapterUuid: string) => {
   const expertsMap = indexData?.experts || {};
   const installedExperts: Record<string, string> = {};
 
@@ -55,7 +65,8 @@ const getInstalledVersionsForChapter = (indexData: any, courseId: string, chapte
   });
 
   return {
-    chapter_bundle: indexData?.chapter?.[scopeId]?.version || null,
+    // chapterUuid is now the chapter UUID, matching indexData.chapter[uuid]
+    chapter_bundle: indexData?.chapter?.[chapterUuid]?.version || null,
     experts: installedExperts,
   };
 };
@@ -165,5 +176,32 @@ export const updateManager = {
     const check = await this.checkChapterUpdates(courseId, chapterId, installed);
     await installReleases(check.required);
     return { installed: check.required.length, check };
+  },
+
+  async syncChapterBundlesFromApi(chapters: { id: string; bundle_url: string; bundle_version: string; bundle_sha256: string; bundle_size_bytes: number }[]) {
+    if (!window.tutorApp) {
+      return { installed: 0 };
+    }
+
+    const indexData = await window.tutorApp.getBundleIndex();
+    const releases: BundleDescriptor[] = [];
+
+    for (const ch of chapters) {
+      if (!ch.bundle_url) continue;
+      const installed = indexData?.chapter?.[ch.id];
+      if (installed?.version === ch.bundle_version) continue;
+      releases.push({
+        bundle_type: 'chapter',
+        scope_id: ch.id,
+        version: ch.bundle_version,
+        artifact_url: ch.bundle_url,
+        sha256: ch.bundle_sha256 || '',
+        size_bytes: ch.bundle_size_bytes || 0,
+        mandatory: true,
+      });
+    }
+
+    await installReleases(releases);
+    return { installed: releases.length };
   },
 };

@@ -1,6 +1,5 @@
 import { Chapter, CompletionStatus, CourseSummary, Phase } from '../types';
 import { backendClient } from './backendClient';
-import { contentService } from './contentService';
 
 interface BackendCourseSummary {
   id: string;
@@ -25,12 +24,16 @@ interface BackendCourseDetail {
 }
 
 interface BackendChapter {
-  id: string;
+  id: string;            // UUID
   chapter_code: string;
   title: string;
   status: CompletionStatus;
   locked: boolean;
   order: number;
+  bundle_url?: string;
+  bundle_version?: string;
+  bundle_sha256?: string;
+  bundle_size_bytes?: number;
 }
 
 const defaultRoadmap = {
@@ -50,8 +53,8 @@ const mapCourseSummary = (course: BackendCourseSummary): CourseSummary => ({
   joinedAt: course.joined_at,
 });
 
-const mapChapter = (courseCode: string, chapter: BackendChapter): Chapter => ({
-  id: `${courseCode}/${chapter.chapter_code}`,
+const mapChapter = (_courseCode: string, chapter: BackendChapter): Chapter => ({
+  id: chapter.id,  // UUID from backend
   title: chapter.title,
   status: chapter.status,
   initialMessage: '欢迎来到本章。请先描述你当前的理解与进度。',
@@ -88,15 +91,6 @@ export const courseService = {
   },
 
   async getCoursePhases(courseId: string, courseCode?: string): Promise<Phase[]> {
-    const bundlePhases = await contentService.loadPhasesFromBundles();
-    if (bundlePhases && bundlePhases.length > 0) {
-      const exact = bundlePhases.filter((phase) => phase.id === courseId);
-      if (exact.length > 0) {
-        return exact;
-      }
-      return bundlePhases;
-    }
-
     const [course, chapters] = await Promise.all([this.getCourse(courseId), this.listChapters(courseId)]);
     const scopePrefix = courseCode || courseId;
 
@@ -115,4 +109,18 @@ export const courseService = {
       },
     ];
   },
+
+  getChapterBundleInfo(chapters: BackendChapter[]) {
+    return chapters
+      .filter((ch) => ch.bundle_url)
+      .map((ch) => ({
+        id: ch.id,
+        bundle_url: ch.bundle_url!,
+        bundle_version: ch.bundle_version!,
+        bundle_sha256: ch.bundle_sha256 || '',
+        bundle_size_bytes: ch.bundle_size_bytes || 0,
+      }));
+  },
 };
+
+export type { BackendChapter };
