@@ -39,6 +39,7 @@ export interface SessionSummary {
   createdAt: string;
   lastActiveAt: string;
   turnCount: number;
+  bundleVersion?: string;
 }
 
 export interface Chapter {
@@ -292,12 +293,14 @@ declare global {
         chapterId: string;
         courseId?: string | null;
         chapterScopeId?: string | null;
+        bundleVersion?: string | null;
       }) => Promise<{ session_id: string; initial_message?: string }>;
       reattachRuntimeSession: (payload: {
         sessionId: string;
         chapterId: string;
         courseId?: string | null;
         chapterScopeId?: string | null;
+        bundleVersion?: string | null;
       }) => Promise<{ status: string }>;
       restoreSessionState: (payload: {
         sessionId: string;

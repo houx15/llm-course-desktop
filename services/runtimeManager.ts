@@ -313,12 +313,13 @@ export const runtimeManager = {
     chapterId: string;
     courseId?: string | null;
     chapterScopeId?: string | null;
+    bundleVersion?: string | null;
   }) {
     if (!window.tutorApp) return;
     await window.tutorApp.reattachRuntimeSession(params);
   },
 
-  async createSession(params: { chapterId: string; courseId?: string | null; chapterScopeId?: string | null }) {
+  async createSession(params: { chapterId: string; courseId?: string | null; chapterScopeId?: string | null; bundleVersion?: string | null }) {
     const started = await this.ensureStarted();
     if (!started.started) {
       throw new Error(started.reason || 'Failed to start sidecar');

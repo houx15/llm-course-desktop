@@ -793,9 +793,14 @@ const downloadToTemp = async (url, onProgress) => {
   if (!isHttpUrl(url)) {
     throw new Error(`Invalid artifact URL for download: ${url}`);
   }
-  const response = await fetch(url);
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    throw new Error(`Bundle download failed for URL ${url}: ${err.message}`);
+  }
   if (!response.ok) {
-    throw new Error(`Failed to download artifact: ${response.status}`);
+    throw new Error(`Failed to download artifact (${response.status}) from URL: ${url}`);
   }
 
   const totalBytes = Number(response.headers.get('content-length') || 0);
@@ -923,11 +928,21 @@ const installBundleRelease = async (release, onProgress) => {
 
     const indexData = await loadIndex();
     indexData[bundleType] = indexData[bundleType] || {};
+    const prevEntry = indexData[bundleType][scopeIdRaw] || {};
+    const prevVersions = prevEntry.versions || {};
     indexData[bundleType][scopeIdRaw] = {
       version,
       path: targetDir,
       sha256: expectedSha || null,
       installedAt: new Date().toISOString(),
+      versions: {
+        ...prevVersions,
+        [version]: {
+          path: targetDir,
+          sha256: expectedSha || null,
+          installedAt: new Date().toISOString(),
+        },
+      },
     };
     await saveIndex(indexData);
 
@@ -2385,16 +2400,43 @@ const buildSidecarSessionContext = async (params) => {
   const chapterId = String(params?.chapterId || '').trim();
   const courseId = String(params?.courseId || '').trim();
   const chapterScopeIdInput = String(params?.chapterScopeId || '').trim();
+  const bundleVersion = String(params?.bundleVersion || '').trim();
   const indexData = await loadIndex();
   const chapterCode = chapterId;
   const chapterScopeId = chapterScopeIdInput || chapterCode;
 
   // Look up by exact key, then by courseId/chapterCode composite, then by suffix match
-  const chapterEntry =
+  let chapterEntry =
     indexData?.chapter?.[chapterScopeId] ||
     (courseId ? indexData?.chapter?.[`${courseId}/${chapterScopeId}`] : null) ||
     Object.entries(indexData?.chapter || {}).find(([k]) => k.endsWith(`/${chapterScopeId}`))?.[1] ||
     null;
+
+  // If a specific bundle version is requested and differs from latest,
+  // try to resolve the path for that version
+  if (bundleVersion && chapterEntry && chapterEntry.version !== bundleVersion) {
+    const versionInfo = chapterEntry.versions?.[bundleVersion];
+    if (versionInfo?.path) {
+      try {
+        await fs.access(versionInfo.path);
+        chapterEntry = { ...chapterEntry, path: versionInfo.path, version: bundleVersion };
+      } catch {
+        // Old version dir not found — fall back to latest
+      }
+    } else {
+      // No versions sub-object, try to construct path directly
+      const settings = await loadSettings();
+      const bundlesRoot = getBundlesRoot(settings);
+      const scopeParts = chapterScopeId.split('/').map((part) => sanitizeSegment(part)).filter(Boolean);
+      const versionDir = path.join(bundlesRoot, 'chapter', ...scopeParts, bundleVersion);
+      try {
+        await fs.access(versionDir);
+        chapterEntry = { ...chapterEntry, path: versionDir, version: bundleVersion };
+      } catch {
+        // Old version dir not found — fall back to latest
+      }
+    }
+  }
   const appAgentsEntry = indexData?.app_agents?.core || null;
   const expertsSharedEntry = indexData?.experts_shared?.shared || null;
 
@@ -2840,6 +2882,7 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
   const chapterId = String(payload?.chapterId || '').trim();
   const courseId = String(payload?.courseId || '').trim() || null;
   const chapterScopeId = String(payload?.chapterScopeId || '').trim() || null;
+  const bundleVersion = String(payload?.bundleVersion || '').trim() || null;
   if (!chapterId) {
     throw new Error('Missing chapterId');
   }
@@ -2858,7 +2901,7 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
         const backendResp = await requestBackend({
           method: 'POST',
           path: `/v1/chapters/${encodeURIComponent(chapterId)}/sessions`,
-          body: { course_id: courseId },
+          body: { course_id: courseId, bundle_version: bundleVersion || null },
           withAuth: true,
         });
         if (backendResp.ok && backendResp.data?.session_id) {
@@ -2872,7 +2915,7 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
     }
 
     const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
-    const desktopContext = await buildSidecarSessionContext({ chapterId, courseId, chapterScopeId });
+    const desktopContext = await buildSidecarSessionContext({ chapterId, courseId, chapterScopeId, bundleVersion });
 
     const sidecarBody = {
       chapter_id: chapterId,
@@ -2929,12 +2972,13 @@ ipcMain.handle('runtime:reattachSession', async (_event, payload) => {
   const chapterId = String(payload?.chapterId || '').trim();
   const courseId = String(payload?.courseId || '').trim() || null;
   const chapterScopeId = String(payload?.chapterScopeId || '').trim() || null;
+  const bundleVersion = String(payload?.bundleVersion || '').trim() || null;
   if (!sessionId || !chapterId) {
     throw new Error('Missing sessionId or chapterId');
   }
 
   const baseUrl = String(SIDECAR_BASE_URL).replace(/\/+$/, '');
-  const desktopContext = await buildSidecarSessionContext({ chapterId, courseId, chapterScopeId });
+  const desktopContext = await buildSidecarSessionContext({ chapterId, courseId, chapterScopeId, bundleVersion });
   const auth = await loadAuthStore();
   const reattachBody = { desktop_context: desktopContext };
   if (auth?.accessToken) {

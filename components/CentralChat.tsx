@@ -101,6 +101,19 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const composingRef = useRef(false);
   const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const getLatestBundleVersion = async (): Promise<string | undefined> => {
+    try {
+      const indexData = await window.tutorApp?.getBundleIndex();
+      const entry = indexData?.chapter?.[chapter.id] ||
+        indexData?.chapter?.[chapterId] ||
+        Object.entries(indexData?.chapter || {}).find(([k]: [string, any]) => k.endsWith(`/${chapterId}`))?.[1] ||
+        null;
+      return entry?.version || undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   const isSyncableCodeFile = (name: string) => {
     const lower = String(name || '').toLowerCase();
     return lower.endsWith('.py') || lower.endsWith('.ipynb');
@@ -192,12 +205,14 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const reattachAndLoadSession = async (
     targetSessionId: string,
     cancelled: () => boolean,
+    sessionBundleVersion?: string,
   ) => {
     await runtimeManager.reattachSession({
       sessionId: targetSessionId,
       chapterId,
       courseId,
       chapterScopeId: chapter.id,
+      bundleVersion: sessionBundleVersion || null,
     });
     const [turns, report] = await Promise.all([
       runtimeManager.getSessionHistory(targetSessionId),
@@ -231,6 +246,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
       agent_state?: Record<string, unknown> | null;
     },
     cancelled: () => boolean,
+    sessionBundleVersion?: string,
   ) => {
     const stopProgress = startInitProgress('restoring');
     const recoveredTurns = state.turns || [];
@@ -255,6 +271,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
         chapterId,
         courseId,
         chapterScopeId: chapter.id,
+        bundleVersion: sessionBundleVersion || null,
       });
       setInitProgress((p) => Math.max(p, 88));
       [sidecarTurns, report] = await Promise.all([
@@ -285,10 +302,12 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const createNewSession = async (cancelled: () => boolean) => {
     const stopProgress = startInitProgress('creating');
     try {
+      const bundleVersion = await getLatestBundleVersion();
       const created = await runtimeManager.createSession({
         chapterId,
         courseId,
         chapterScopeId: chapter.id,
+        bundleVersion: bundleVersion || null,
       });
       if (cancelled()) return;
       setInitProgress(100);
@@ -324,12 +343,15 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
         // CASE 1: Explicit session requested (user clicked a specific session or auto-selected)
         if (requestedSessionId) {
+          const knownSession = chapter.sessions?.find(s => s.sessionId === requestedSessionId);
+          const sessionBundleVer = knownSession?.bundleVersion;
+
           // Try local sidecar first
           const localSessions = await runtimeManager.listSessions();
           const localMatch = localSessions.find((s) => s.session_id === requestedSessionId);
 
           if (localMatch) {
-            await reattachAndLoadSession(requestedSessionId, isCancelled);
+            await reattachAndLoadSession(requestedSessionId, isCancelled, sessionBundleVer);
             return;
           }
 
@@ -337,7 +359,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
           try {
             const state = await fetchSessionStateById(requestedSessionId);
             if (state.has_data && state.session_id) {
-              await restoreFromBackend(requestedSessionId, state, isCancelled);
+              await restoreFromBackend(requestedSessionId, state, isCancelled, sessionBundleVer);
               return;
             }
           } catch (err) {
@@ -446,10 +468,12 @@ const CentralChat: React.FC<CentralChatProps> = ({
       // No existing session — create new
       const stopProgress = startInitProgress('creating');
       try {
+        const bundleVersion = await getLatestBundleVersion();
         const created = await runtimeManager.createSession({
           chapterId,
           courseId,
           chapterScopeId: chapter.id,
+          bundleVersion: bundleVersion || null,
         });
         stopProgress();
         setInitProgress(100);

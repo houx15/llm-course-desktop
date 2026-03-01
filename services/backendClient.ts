@@ -141,6 +141,7 @@ export interface SessionSummaryResult {
   created_at: string;
   last_active_at: string;
   turn_count: number;
+  bundle_version?: string;
 }
 
 export const fetchChapterSessions = (

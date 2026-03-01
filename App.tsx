@@ -19,6 +19,7 @@ import { Phase, Chapter, CourseSummary, User, SessionSummary } from './types';
 import { fetchChapterSessions } from './services/backendClient';
 import SidecarDownloadProgress from './components/SidecarDownloadProgress';
 import BugReportModal from './components/BugReportModal';
+import ChapterUpdateModal from './components/ChapterUpdateModal';
 import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight, ArrowUpCircle } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -65,6 +66,9 @@ const App: React.FC = () => {
   const eventCounterRef = useRef(1);
   const startupInFlightRef = useRef(false);
   const sidecarNeedsRestartRef = useRef(false);
+  const [chapterUpdateModal, setChapterUpdateModal] = useState<{
+    resolve: (choice: 'new' | 'resume') => void;
+  } | null>(null);
 
   const parseReportLines = (report: string) =>
     report
@@ -481,7 +485,7 @@ const App: React.FC = () => {
     // currentChapter are batched in the same React render. Otherwise CentralChat
     // mounts with a stale requestedSessionId and may create a new session.
     let mappedSessions: SessionSummary[] = [];
-    let targetSessionId: string | undefined = undefined;
+    let targetSessionId: string | null | undefined = undefined;
     try {
       const { sessions } = await fetchChapterSessions(chapterCode, courseId);
       const allSessions: SessionSummary[] = sessions.map(s => ({
@@ -489,6 +493,7 @@ const App: React.FC = () => {
         createdAt: s.created_at,
         lastActiveAt: s.last_active_at,
         turnCount: s.turn_count,
+        bundleVersion: s.bundle_version,
       }));
       // Only show sessions with actual conversation in the sidebar
       mappedSessions = allSessions.filter(s => s.turnCount > 0);
@@ -499,6 +504,31 @@ const App: React.FC = () => {
         targetSessionId = withTurns.sessionId;
       } else if (allSessions.length > 0) {
         targetSessionId = allSessions[0].sessionId;
+      }
+
+      // Check for version mismatch: existing sessions vs latest installed bundle
+      const indexData = await window.tutorApp?.getBundleIndex();
+      const chapterIndexEntry = indexData?.chapter?.[chapterCode] ||
+        indexData?.chapter?.[chapter.id] ||
+        Object.entries(indexData?.chapter || {}).find(([k]: [string, any]) => k.endsWith(`/${chapterCode}`))?.[1] ||
+        null;
+      const latestBundleVersion = chapterIndexEntry?.version;
+      const sessionsWithTurns = allSessions.filter(s => s.turnCount > 0);
+      const existingSessionVersion = sessionsWithTurns[0]?.bundleVersion;
+
+      if (
+        sessionsWithTurns.length > 0 &&
+        latestBundleVersion &&
+        existingSessionVersion &&
+        latestBundleVersion !== existingSessionVersion
+      ) {
+        const userChoice = await new Promise<'new' | 'resume'>((resolve) => {
+          setChapterUpdateModal({ resolve });
+        });
+        setChapterUpdateModal(null);
+        if (userChoice === 'new') {
+          targetSessionId = null; // null = force-create in CentralChat
+        }
       }
     } catch (err) {
       console.warn('Failed to fetch chapter sessions:', err);
@@ -726,6 +756,12 @@ const App: React.FC = () => {
         onRetry={handleSidecarRetry}
         onLogout={handleLogout}
       />
+      {chapterUpdateModal && (
+        <ChapterUpdateModal
+          onNewSession={() => chapterUpdateModal.resolve('new')}
+          onResume={() => chapterUpdateModal.resolve('resume')}
+        />
+      )}
       {view === 'dashboard' ? (
         <div className="flex flex-col h-screen bg-gray-50 font-sans text-gray-900">
             <TopBar user={user} onLogout={handleLogout} />
