@@ -217,7 +217,7 @@ const USER_SCOPED_SETTINGS_KEYS = new Set([
 ]);
 
 // Fixed URL constants — not user-configurable
-const BACKEND_BASE_URL = process.env.TUTOR_BACKEND_URL || 'http://47.93.151.131:10723';
+const BACKEND_BASE_URL = process.env.TUTOR_BACKEND_URL || 'https://api.knoweia.com';
 const SIDECAR_BASE_URL = process.env.TUTOR_SIDECAR_URL || 'http://127.0.0.1:8000';
 
 const defaultAuthState = () => ({
