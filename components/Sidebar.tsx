@@ -180,7 +180,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                             )}
 
                             {/* New session button — always visible when active, hover otherwise */}
-                            {!isChapterLocked && chapter.status !== 'NOT_STARTED' && (
+                            {!isChapterLocked && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); onCreateNewSession(chapter, phase); }}
                                 className={`shrink-0 w-6 h-6 mr-1 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all ${
@@ -210,6 +210,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     currentSessionId === session.sessionId ? 'bg-blue-500' : 'bg-gray-300'
                                   }`} />
                                   <span className="truncate">{formatShortDate(session.createdAt)}</span>
+                                  {session.bundleVersion && (
+                                    <span className="shrink-0 text-[10px] text-gray-400">[{session.bundleVersion}]</span>
+                                  )}
                                   {session.turnCount > 0 && (
                                     <span className="shrink-0 text-[10px] text-gray-400">{session.turnCount}轮</span>
                                   )}
