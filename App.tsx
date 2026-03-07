@@ -19,6 +19,7 @@ import { Phase, Chapter, CourseSummary, User, SessionSummary } from './types';
 import { fetchChapterSessions } from './services/backendClient';
 import SidecarDownloadProgress from './components/SidecarDownloadProgress';
 import BugReportModal from './components/BugReportModal';
+import LlmErrorModal from './components/LlmErrorModal';
 import ChapterUpdateModal from './components/ChapterUpdateModal';
 import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight, ArrowUpCircle } from 'lucide-react';
 
@@ -47,6 +48,7 @@ const App: React.FC = () => {
     Record<string, { dynamicReport: string; roadmapUpdating: boolean; memoUpdating: boolean }>
   >({});
   const [runtimeNotice, setRuntimeNotice] = useState('');
+  const [llmErrorMessage, setLlmErrorMessage] = useState('');
   const [showSidecarDownload, setShowSidecarDownload] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<{ version: string } | null>(null);
   const [editorWidths, setEditorWidths] = useState<Record<string, number>>({});
@@ -165,6 +167,19 @@ const App: React.FC = () => {
           },
         }));
       }
+      return;
+    }
+
+    if (event.type === 'llm_error') {
+      setLlmErrorMessage((event as any).error || 'Unknown LLM error');
+      setChapterRuntimeState((prev) => ({
+        ...prev,
+        [chapterId]: {
+          dynamicReport: prev[chapterId]?.dynamicReport || '',
+          roadmapUpdating: false,
+          memoUpdating: false,
+        },
+      }));
       return;
     }
 
@@ -755,6 +770,11 @@ const App: React.FC = () => {
         errorMessage={runtimeNotice}
         onRetry={handleSidecarRetry}
         onLogout={handleLogout}
+      />
+      <LlmErrorModal
+        isOpen={!!llmErrorMessage}
+        errorMessage={llmErrorMessage}
+        onDismiss={() => setLlmErrorMessage('')}
       />
       {chapterUpdateModal && (
         <ChapterUpdateModal

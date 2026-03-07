@@ -542,6 +542,16 @@ const CentralChat: React.FC<CentralChatProps> = ({
         if (event.type === 'error') {
           appendToLatestModelMessage(`\n\n[错误] ${event.message}`);
         }
+        if (event.type === 'llm_error') {
+          // Remove the empty model message bubble — the modal will show the error
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'model' && !last.text) {
+              return prev.slice(0, -1);
+            }
+            return prev;
+          });
+        }
         if (event.type === 'token_usage') {
           if (capturedTurnIndex === undefined) {
             capturedTurnIndex = event.turnIndex;

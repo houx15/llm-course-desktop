@@ -1713,7 +1713,7 @@ const ensureCondaEnv = async (condaRoot, sendProgress) => {
   return true; // freshly created
 };
 
-const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
+const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress, { forceInstallDeps = false } = {}) => {
   // 1. Check current installed version from index
   const indexData = await loadIndex();
   const installedVersions = {
@@ -1786,8 +1786,10 @@ const ensureSidecarCode = async (condaRoot, runtimeConfig, sendProgress) => {
   const bundleRoot = String(prEntries[0][1].path);
 
   // 5. pip install requirements into the conda env (idempotent via marker file)
+  //    forceInstallDeps is set when the conda env was freshly created — the marker
+  //    file may exist from a previous installation but the env is empty.
   const depsMarker = path.join(bundleRoot, '.deps_installed');
-  if (!needsDownload && await pathExists(depsMarker)) {
+  if (!needsDownload && !forceInstallDeps && await pathExists(depsMarker)) {
     return; // deps already installed for this bundle version
   }
 
@@ -1854,7 +1856,11 @@ ipcMain.handle('sidecar:ensureReady', async () => {
       const envCreated = await ensureCondaEnv(condaRoot, sendProgress);
 
       // Stage 3: Sidecar code bundle + pip install (skipped if up to date)
-      await ensureSidecarCode(condaRoot, runtimeConfig, sendProgress);
+      //          Force re-install deps if the conda env was freshly created,
+      //          because the marker file may exist from a previous installation.
+      await ensureSidecarCode(condaRoot, runtimeConfig, sendProgress, {
+        forceInstallDeps: envCreated,
+      });
 
       // A restart is needed when conda or the env was freshly installed,
       // because the Electron process env (PATH, etc.) must be refreshed.
