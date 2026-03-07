@@ -16,6 +16,7 @@ interface TopBarProps {
 
 const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [displayName, setDisplayName] = useState(user.name);
 
   return (
     <>
@@ -54,7 +55,7 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick }) => {
                 title="Settings"
               >
                   <div className="flex flex-col items-end hidden sm:block">
-                      <span className="text-sm font-bold text-gray-800 leading-none">{user.name}</span>
+                      <span className="text-sm font-bold text-gray-800 leading-none">{displayName}</span>
                   </div>
                   <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 group-hover:bg-black group-hover:text-white transition-all shadow-sm">
                       <Settings size={18} />
@@ -63,7 +64,13 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick }) => {
           </div>
       </div>
 
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onLogout={onLogout} />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onLogout={onLogout}
+        user={user}
+        onUserNameChanged={(newName) => setDisplayName(newName)}
+      />
     </>
   );
 };

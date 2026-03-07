@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Key, HardDrive, Database, Eye, EyeOff, ExternalLink, ChevronDown, Check, Info, RefreshCw, FolderOpen, LogOut, Zap } from 'lucide-react';
+import { X, Save, Key, HardDrive, Database, Eye, EyeOff, ExternalLink, ChevronDown, Check, Info, RefreshCw, FolderOpen, LogOut, Zap, UserCog } from 'lucide-react';
+import { backendClient } from '../services/backendClient';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLogout?: () => void;
+  user?: { name: string; email: string };
+  onUserNameChanged?: (newName: string) => void;
 }
 
 const API_KEY_HELP_URL = 'https://puk4mtafgs.feishu.cn/wiki/Ej7cwWaqsiFaSHkbBgKcr0ldnkg';
@@ -25,7 +28,7 @@ type ProviderConfig = {
   model: string;
 };
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onLogout }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onLogout, user, onUserNameChanged }) => {
   const [activeTab, setActiveTab] = useState<'storage' | 'api' | 'about' | 'account'>('storage');
   const [storageRoot, setStorageRoot] = useState('');
   const [rememberLogin, setRememberLogin] = useState(true);
@@ -45,6 +48,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [loadedKeys, setLoadedKeys] = useState<Record<string, string>>({});
   const [loadedApiSnapshot, setLoadedApiSnapshot] = useState('');
   const [saveHint, setSaveHint] = useState('');
+
+  // Account tab state
+  const [editName, setEditName] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [accountNotice, setAccountNotice] = useState('');
+  const [accountError, setAccountError] = useState('');
+  const [isAccountSaving, setIsAccountSaving] = useState(false);
 
   // About tab state
   const [appVersion, setAppVersion] = useState('');
@@ -92,6 +104,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
       setKeyTested(false);
       setSaveHint('');
       setNotice('');
+      setEditName(user?.name || '');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setAccountNotice('');
+      setAccountError('');
 
       // Load version info for About tab
       try {
@@ -318,19 +336,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                 关于
               </button>
             </div>
-            {onLogout && (
-              <div className="mt-auto pt-3 border-t border-gray-200">
-                <button
-                  onClick={() => setActiveTab('account')}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                    activeTab === 'account' ? 'bg-white text-red-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-500 hover:bg-gray-100 hover:text-red-600'
-                  }`}
-                >
-                  <LogOut size={16} />
-                  退出登录
-                </button>
-              </div>
-            )}
+            <div className="mt-auto pt-3 border-t border-gray-200">
+              <button
+                onClick={() => setActiveTab('account')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${
+                  activeTab === 'account' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <UserCog size={16} />
+                账户
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 p-6 overflow-y-auto bg-white">
@@ -606,20 +622,133 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               </div>
             )}
 
-            {activeTab === 'account' && onLogout && (
+            {activeTab === 'account' && (
               <div className="space-y-6">
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <LogOut size={16} className="text-red-500" /> 退出登录
+                  <UserCog size={16} className="text-blue-500" /> 账户设置
                 </h3>
-                <p className="text-sm text-gray-600">
-                  退出当前账号后，需要重新登录才能继续学习。本地的学习数据不会被删除。
-                </p>
-                <button
-                  onClick={() => { onClose(); onLogout(); }}
-                  className="px-5 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  确认退出登录
-                </button>
+
+                {accountNotice && (
+                  <div className="px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                    {accountNotice}
+                  </div>
+                )}
+                {accountError && (
+                  <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+                    {accountError}
+                  </div>
+                )}
+
+                {/* Display Name */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">昵称</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="输入新昵称"
+                    />
+                    <button
+                      disabled={isAccountSaving || !editName.trim() || editName === user?.name}
+                      onClick={async () => {
+                        setIsAccountSaving(true);
+                        setAccountError('');
+                        setAccountNotice('');
+                        try {
+                          await backendClient.patch('/v1/users/me/profile', { display_name: editName.trim() }, true);
+                          setAccountNotice('昵称已更新');
+                          onUserNameChanged?.(editName.trim());
+                        } catch (err) {
+                          setAccountError(err instanceof Error ? err.message : '更新失败');
+                        } finally {
+                          setIsAccountSaving(false);
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-medium bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
+                    >
+                      修改
+                    </button>
+                  </div>
+                  {user?.email && (
+                    <p className="text-[11px] text-gray-400">邮箱: {user.email}</p>
+                  )}
+                </div>
+
+                {/* Password Change */}
+                <div className="border-t border-gray-100 pt-4 space-y-3">
+                  <label className="text-xs font-bold text-gray-500 uppercase">修改密码</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="当前密码"
+                  />
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="新密码（至少 8 位）"
+                  />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="确认新密码"
+                  />
+                  <button
+                    disabled={isAccountSaving || !currentPassword || !newPassword || newPassword.length < 8 || newPassword !== confirmPassword}
+                    onClick={async () => {
+                      if (newPassword !== confirmPassword) {
+                        setAccountError('两次输入的新密码不一致');
+                        return;
+                      }
+                      setIsAccountSaving(true);
+                      setAccountError('');
+                      setAccountNotice('');
+                      try {
+                        await backendClient.post('/v1/users/me/change-password', {
+                          current_password: currentPassword,
+                          new_password: newPassword,
+                        }, true);
+                        setAccountNotice('密码已修改');
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                      } catch (err) {
+                        setAccountError(err instanceof Error ? err.message : '修改失败');
+                      } finally {
+                        setIsAccountSaving(false);
+                      }
+                    }}
+                    className="px-4 py-2 text-sm font-medium bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
+                  >
+                    修改密码
+                  </button>
+                  {newPassword && newPassword.length < 8 && (
+                    <p className="text-[11px] text-red-500">密码至少 8 位</p>
+                  )}
+                  {confirmPassword && newPassword !== confirmPassword && (
+                    <p className="text-[11px] text-red-500">两次输入的密码不一致</p>
+                  )}
+                </div>
+
+                {/* Logout */}
+                {onLogout && (
+                  <div className="border-t border-gray-100 pt-4">
+                    <button
+                      onClick={() => { onClose(); onLogout(); }}
+                      className="px-5 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      退出登录
+                    </button>
+                    <p className="text-[11px] text-gray-400 mt-2">退出后需重新登录，本地数据不会删除。</p>
+                  </div>
+                )}
               </div>
             )}
 

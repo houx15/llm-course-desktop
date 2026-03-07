@@ -1652,7 +1652,9 @@ const ensureCondaInstalled = async (condaRoot, runtimeConfig, sendProgress) => {
     // with "File or directory already exists" unless -u is passed.
     await ensureDir(path.dirname(condaRoot));
     if (process.platform === 'win32') {
-      await runSubprocess(installerPath, ['/S', `/D=${condaRoot}`]);
+      // /AddToPath=0: Don't add conda to system PATH (avoids impacting user's existing Python/conda)
+      // /RegisterPython=0: Don't register as the default system Python
+      await runSubprocess(installerPath, ['/S', '/AddToPath=0', '/RegisterPython=0', `/D=${condaRoot}`]);
     } else {
       await fs.chmod(installerPath, 0o755);
       // -u allows updating an existing (possibly partial) installation

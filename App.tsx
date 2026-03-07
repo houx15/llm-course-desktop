@@ -230,7 +230,14 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isResizingLeft) return;
     const onMouseMove = (e: MouseEvent) => {
-      setLeftPanelWidth(Math.max(180, Math.min(420, e.clientX)));
+      const x = e.clientX;
+      if (x < 80) {
+        // Snap to collapsed
+        setIsSidebarOpen(false);
+        setIsResizingLeft(false);
+        return;
+      }
+      setLeftPanelWidth(Math.max(180, Math.min(420, x)));
     };
     const onMouseUp = () => setIsResizingLeft(false);
     window.addEventListener('mousemove', onMouseMove);
@@ -244,7 +251,14 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isResizingRight) return;
     const onMouseMove = (e: MouseEvent) => {
-      setRightPanelWidth(Math.max(200, Math.min(520, window.innerWidth - e.clientX)));
+      const fromRight = window.innerWidth - e.clientX;
+      if (fromRight < 80) {
+        // Snap to collapsed
+        setIsRightPanelOpen(false);
+        setIsResizingRight(false);
+        return;
+      }
+      setRightPanelWidth(Math.max(200, Math.min(520, fromRight)));
     };
     const onMouseUp = () => setIsResizingRight(false);
     window.addEventListener('mousemove', onMouseMove);
@@ -826,13 +840,19 @@ const App: React.FC = () => {
             />
           </div>
         ) : (
-          <button
+          <div
+            className="w-5 shrink-0 h-full border-r border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center z-20 cursor-col-resize"
+            title="拖拽展开侧边栏"
             onClick={() => setIsSidebarOpen(true)}
-            className="w-5 shrink-0 h-full border-r border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center z-20"
-            title="展开侧边栏"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsSidebarOpen(true);
+              setLeftPanelWidth(180);
+              setIsResizingLeft(true);
+            }}
           >
             <ChevronRight size={12} className="text-gray-400" />
-          </button>
+          </div>
         )}
 
         {/* LEFT RESIZE DIVIDER */}
@@ -1002,13 +1022,19 @@ const App: React.FC = () => {
             </div>
           </>
         ) : (
-          <button
+          <div
+            className="w-5 shrink-0 h-full border-l border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center cursor-col-resize"
+            title="拖拽展开报告栏"
             onClick={() => setIsRightPanelOpen(true)}
-            className="w-5 shrink-0 h-full border-l border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center"
-            title="展开报告栏"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsRightPanelOpen(true);
+              setRightPanelWidth(200);
+              setIsResizingRight(true);
+            }}
           >
             <ChevronLeft size={12} className="text-gray-400" />
-          </button>
+          </div>
         ))}
       </div>
     </div>

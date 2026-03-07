@@ -4,7 +4,7 @@ import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManage
 import { syncQueue } from '../services/syncQueue';
 import { fetchSessionState, fetchSessionStateById, listWorkspaceSubmittedFiles } from '../services/backendClient';
 import { codeWorkspace } from '../services/codeWorkspace';
-import { Bot, User, SendHorizontal, Loader2, Terminal, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
+import { Bot, User, SendHorizontal, Loader2, Terminal, Maximize2, Minimize2, Copy, Check, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -578,6 +578,22 @@ const CentralChat: React.FC<CentralChatProps> = ({
         }
       });
 
+      // Attach token usage totals to the last model message
+      const totalInput = Object.values(tokenUsage).reduce((s, v) => s + v.input, 0);
+      const totalOutput = Object.values(tokenUsage).reduce((s, v) => s + v.output, 0);
+      if (totalInput > 0 || totalOutput > 0) {
+        setMessages((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'model') {
+              next[i] = { ...next[i], tokenUsage: { input: totalInput, output: totalOutput } };
+              break;
+            }
+          }
+          return next;
+        });
+      }
+
       syncQueue.enqueueAnalytics({
         event_type: 'turn_complete',
         event_time: new Date().toISOString(),
@@ -653,6 +669,11 @@ const CentralChat: React.FC<CentralChatProps> = ({
     if (!sent) {
       setInputValue(text);
     }
+  };
+
+  const handleStop = () => {
+    runtimeManager.cancelStream();
+    setIsLoading(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -766,7 +787,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   return (
     <div className="flex flex-col h-full bg-white relative">
       <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
-        {messages.map((msg, idx) => {
+        {messages.filter(msg => !(msg.role === 'model' && /^\[系统[：:]/.test(msg.text))).map((msg, idx) => {
           const hasCodeBlock = msg.role === 'model' && msg.text.includes('```');
 
           return (
@@ -806,11 +827,16 @@ const CentralChat: React.FC<CentralChatProps> = ({
                     </div>
                   )}
                 </div>
+                {msg.role === 'model' && msg.tokenUsage && (
+                  <span className="text-[10px] text-gray-400 mt-1 px-1">
+                    tokens: {msg.tokenUsage.input} in / {msg.tokenUsage.output} out
+                  </span>
+                )}
               </div>
             </div>
           );
         })}
-        {isLoading && (
+        {isLoading && !(messages.length > 0 && messages[messages.length - 1]?.role === 'model' && messages[messages.length - 1]?.text) && (
           <div className="flex gap-4">
             <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm">
               <Loader2 size={20} className="animate-spin text-blue-500" />
@@ -857,13 +883,23 @@ const CentralChat: React.FC<CentralChatProps> = ({
                 >
                   <Maximize2 size={14} />
                 </button>
-                <button
-                  onClick={handleSend}
-                  disabled={!inputValue.trim() || isLoading || !sessionId}
-                  className="p-1.5 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <SendHorizontal size={16} />
-                </button>
+                {isLoading ? (
+                  <button
+                    onClick={handleStop}
+                    className="p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                    title="停止生成"
+                  >
+                    <Square size={14} fill="white" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSend}
+                    disabled={!inputValue.trim() || !sessionId}
+                    className="p-1.5 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <SendHorizontal size={16} />
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -102,6 +102,10 @@ export const backendClient = {
   post: <T>(path: string, body?: any, withAuth = true) => {
     return backendClient.request<T>('POST', path, body, withAuth);
   },
+
+  patch: <T>(path: string, body?: any, withAuth = true) => {
+    return backendClient.request<T>('PATCH', path, body, withAuth);
+  },
 };
 
 export interface SessionStateResult {

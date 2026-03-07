@@ -82,6 +82,7 @@ export interface Message {
   text: string;
   attachments?: string[];
   context?: string;
+  tokenUsage?: { input: number; output: number };
 }
 
 export interface CodeWorkspaceFile {

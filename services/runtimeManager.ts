@@ -64,6 +64,8 @@ const mapProvider = (providerId: string) => {
 
 const SIDECAR_BASE_URL = 'http://127.0.0.1:8000';
 
+let _activeStreamAbort: AbortController | null = null;
+
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '');
 
 const parseSsePayload = (raw: string): RawStreamEvent | null => {
@@ -341,79 +343,102 @@ export const runtimeManager = {
     };
   },
 
+  cancelStream() {
+    if (_activeStreamAbort) {
+      _activeStreamAbort.abort();
+      _activeStreamAbort = null;
+    }
+  },
+
   async streamMessage(sessionId: string, message: string, onEvent: (event: NormalizedStreamEvent) => void) {
     if (!window.tutorApp) {
       throw new Error('tutorApp API unavailable');
     }
 
+    const abortController = new AbortController();
+    _activeStreamAbort = abortController;
+
     const baseUrl = normalizeBaseUrl(SIDECAR_BASE_URL);
 
-    const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/message/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
-    });
+    try {
+      const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/message/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+        signal: abortController.signal,
+      });
 
-    if (!response.ok || !response.body) {
-      const text = await response.text().catch(() => '');
-      throw new Error(text || `Stream request failed (${response.status})`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
+      if (!response.ok || !response.body) {
+        const text = await response.text().catch(() => '');
+        throw new Error(text || `Stream request failed (${response.status})`);
       }
 
-      buffer += decoder.decode(value, { stream: true });
-      const blocks = buffer.split('\n\n');
-      buffer = blocks.pop() || '';
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
 
-      for (const block of blocks) {
-        const lines = block
-          .split('\n')
-          .map((line) => line.trim())
-          .filter((line) => line.startsWith('data:'));
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
 
-        for (const line of lines) {
-          const raw = line.replace(/^data:\s*/, '');
-          const parsed = parseSsePayload(raw);
-          if (!parsed) {
-            continue;
-          }
-          const normalized = normalizeEvent(parsed);
-          onEvent(normalized);
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() || '';
 
-          if (normalized.type === 'companion_start') {
-            onEvent({ type: 'roadmap_update', phase: 'start' });
-          }
-          if (normalized.type === 'companion_complete') {
-            onEvent({ type: 'roadmap_update', phase: 'complete' });
-          }
-          if (normalized.type === 'done') {
-            onEvent({ type: 'memo_update', phase: 'start', turnIndex: normalized.turnIndex });
-            try {
-              const report = await this.getDynamicReport(sessionId);
-              onEvent({
-                type: 'memo_update',
-                phase: 'complete',
-                turnIndex: normalized.turnIndex,
-                report,
-              });
-            } catch {
-              onEvent({
-                type: 'memo_update',
-                phase: 'complete',
-                turnIndex: normalized.turnIndex,
-                report: '',
-              });
+        for (const block of blocks) {
+          const lines = block
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line.startsWith('data:'));
+
+          for (const line of lines) {
+            const raw = line.replace(/^data:\s*/, '');
+            const parsed = parseSsePayload(raw);
+            if (!parsed) {
+              continue;
+            }
+            const normalized = normalizeEvent(parsed);
+            onEvent(normalized);
+
+            if (normalized.type === 'companion_start') {
+              onEvent({ type: 'roadmap_update', phase: 'start' });
+            }
+            if (normalized.type === 'companion_complete') {
+              onEvent({ type: 'roadmap_update', phase: 'complete' });
+            }
+            if (normalized.type === 'done') {
+              onEvent({ type: 'memo_update', phase: 'start', turnIndex: normalized.turnIndex });
+              try {
+                const report = await this.getDynamicReport(sessionId);
+                onEvent({
+                  type: 'memo_update',
+                  phase: 'complete',
+                  turnIndex: normalized.turnIndex,
+                  report,
+                });
+              } catch {
+                onEvent({
+                  type: 'memo_update',
+                  phase: 'complete',
+                  turnIndex: normalized.turnIndex,
+                  report: '',
+                });
+              }
             }
           }
         }
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // Stream was cancelled by user — not an error
+        return;
+      }
+      throw err;
+    } finally {
+      if (_activeStreamAbort === abortController) {
+        _activeStreamAbort = null;
       }
     }
   },

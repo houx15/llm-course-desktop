@@ -22,6 +22,20 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Restore last login email on mount
+  React.useEffect(() => {
+    const restore = async () => {
+      try {
+        const settings = await window.tutorApp?.getSettings();
+        const savedEmail = (settings as any)?.lastLoginEmail;
+        if (savedEmail) {
+          setFormData(prev => ({ ...prev, email: savedEmail }));
+        }
+      } catch {}
+    };
+    restore();
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
@@ -88,6 +102,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             email: formData.email,
             password: formData.password,
           });
+      // Save email for next login
+      try {
+        await window.tutorApp?.setSettings({ lastLoginEmail: formData.email } as any);
+      } catch {}
       onLogin(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败');
