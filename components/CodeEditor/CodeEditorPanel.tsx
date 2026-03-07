@@ -38,6 +38,7 @@ interface CodeEditorPanelProps {
   onOutputGenerated?: (output: string) => void;
   onCodeInjectionHandled?: (injectionId: number) => void;
   onSendOutputToChatInput?: (message: string) => void;
+  onPopOut?: () => void;
 }
 
 type MonacoEditorProps = {
@@ -78,6 +79,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   onOutputGenerated,
   onCodeInjectionHandled,
   onSendOutputToChatInput,
+  onPopOut,
 }) => {
   const [mode, setMode] = useState<EditorMode>('notebook');
   const [files, setFiles] = useState<CodeWorkspaceFile[]>([]);
@@ -654,6 +656,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         onStop={handleStop}
         onOpenJupyter={handleOpenJupyter}
         onSubmit={handleSubmit}
+        onPopOut={onPopOut}
         isSubmitting={isSubmitting}
         submitDone={submitDone}
         submitProgress={submitProgress ? `同步中 (${submitProgress})` : undefined}

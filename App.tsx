@@ -23,7 +23,25 @@ import LlmErrorModal from './components/LlmErrorModal';
 import ChapterUpdateModal from './components/ChapterUpdateModal';
 import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight, ArrowUpCircle } from 'lucide-react';
 
-const App: React.FC = () => {
+// Pop-out editor window mode — renders only CodeEditorPanel
+const editorWindowParams = new URLSearchParams(window.location.search);
+const popOutChapterId = editorWindowParams.get('editorWindow');
+const popOutTitle = editorWindowParams.get('title') || '';
+
+const EditorWindowApp: React.FC = () => {
+  if (!popOutChapterId) return null;
+  return (
+    <div className="flex flex-col h-screen bg-white font-sans text-gray-900">
+      <CodeEditorPanel
+        chapterId={popOutChapterId}
+        chapterTitle={popOutTitle}
+        visible={true}
+      />
+    </div>
+  );
+};
+
+const MainApp: React.FC = () => {
   // Auth State
   const [user, setUser] = useState<User | null>(null);
 
@@ -916,6 +934,12 @@ const App: React.FC = () => {
                     initialOutputChunks={currentEditorOutput}
                     initialActiveFile={currentEditorFile}
                     codeInjection={currentCodeInjection}
+                    onPopOut={() => {
+                      window.tutorApp?.openEditorWindow({
+                        chapterId: currentChapter.id,
+                        chapterTitle: currentChapter.title,
+                      });
+                    }}
                     onCodeInjectionHandled={(injectionId) => {
                       setCodeInjections((prev) => {
                         const current = prev[currentChapter.id];
@@ -1041,6 +1065,13 @@ const App: React.FC = () => {
       )}
     </>
   );
+};
+
+const App: React.FC = () => {
+  if (popOutChapterId) {
+    return <EditorWindowApp />;
+  }
+  return <MainApp />;
 };
 
 export default App;

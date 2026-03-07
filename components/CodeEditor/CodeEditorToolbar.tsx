@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Play, Square, UploadCloud } from 'lucide-react';
+import { Loader2, Play, Square, UploadCloud, ExternalLink } from 'lucide-react';
 
 export type EditorMode = 'notebook' | 'script';
 
@@ -10,6 +10,7 @@ interface CodeEditorToolbarProps {
   onStop: () => void;
   onOpenJupyter?: () => void;
   onSubmit?: () => void;
+  onPopOut?: () => void;
   isSubmitting?: boolean;
   submitDone?: boolean;
   submitProgress?: string;
@@ -22,6 +23,7 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
   onStop,
   onOpenJupyter,
   onSubmit,
+  onPopOut,
   isSubmitting = false,
   submitDone = false,
   submitProgress,
@@ -52,6 +54,17 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
           >
             {isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <UploadCloud size={13} />}
             {submitDone ? '已同步' : submitProgress || '同步到云端'}
+          </button>
+        )}
+
+        {onPopOut && (
+          <button
+            onClick={onPopOut}
+            className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            title="在新窗口中打开编辑器"
+          >
+            <ExternalLink size={13} />
+            新窗口
           </button>
         )}
       </div>

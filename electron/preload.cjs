@@ -108,6 +108,8 @@ contextBridge.exposeInMainWorld('tutorApp', {
     return () => ipcRenderer.removeListener('pty:exit', listener);
   },
 
+  openEditorWindow: (payload) => ipcRenderer.invoke('editor:openWindow', payload),
+
   collectBugReport: () => ipcRenderer.invoke('bugs:collect'),
   getRuntimeLogs: () => ipcRenderer.invoke('runtime:getLogs'),
   onRuntimeLog: (callback) => {

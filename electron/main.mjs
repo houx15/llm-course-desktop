@@ -49,6 +49,8 @@ const secretsFilePath = path.join(userDataDir, 'secrets.store.json');
 
 let runtimeProcess = null;
 let mainWindow = null;
+/** @type {Map<string, import('electron').BrowserWindow>} chapterId → editor window */
+const editorWindows = new Map();
 let refreshPromise = null;
 let runtimeStderrBuffer = '';
 let runtimeStartConfig = null;
@@ -62,6 +64,26 @@ const codeExecutionByChapter = new Map();
 const jupyterServers = new Map(); // chapterSegment → { process, port, token, url }
 const DEFAULT_CODE_TIMEOUT_MS = 60_000;
 const createSessionInFlight = new Map();
+
+/**
+ * Broadcast a code execution event (code:output / code:exit) to ALL windows
+ * that might care about this chapter — the main window + any pop-out editor.
+ */
+const broadcastCodeEvent = (channel, payload) => {
+  const targets = new Set();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    targets.add(mainWindow.webContents);
+  }
+  // Find editor window for this chapter
+  for (const [, win] of editorWindows) {
+    if (win && !win.isDestroyed()) {
+      targets.add(win.webContents);
+    }
+  }
+  for (const wc of targets) {
+    wc.send(channel, payload);
+  }
+};
 
 const findFreePort = () =>
   new Promise((resolve, reject) => {
@@ -1050,6 +1072,54 @@ const createWindow = async () => {
     mainWindow = null;
   });
 };
+
+// ---------------------------------------------------------------------------
+// Pop-out editor window
+// ---------------------------------------------------------------------------
+ipcMain.handle('editor:openWindow', async (_event, payload) => {
+  const chapterId = String(payload?.chapterId || '').trim();
+  const chapterTitle = String(payload?.chapterTitle || '').trim();
+  if (!chapterId) throw new Error('Missing chapterId');
+
+  // If an editor window for this chapter already exists, focus it
+  const existing = editorWindows.get(chapterId);
+  if (existing && !existing.isDestroyed()) {
+    existing.focus();
+    return { opened: true, reused: true };
+  }
+
+  const editorWin = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 600,
+    minHeight: 400,
+    backgroundColor: '#ffffff',
+    title: chapterTitle ? `${chapterTitle} — Code Editor` : 'Code Editor',
+    icon: appIconPath,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  editorWindows.set(chapterId, editorWin);
+
+  const query = `?editorWindow=${encodeURIComponent(chapterId)}&title=${encodeURIComponent(chapterTitle)}`;
+  if (isDev) {
+    await editorWin.loadURL(`${devServerUrl}${query}`);
+  } else {
+    const indexPath = path.join(__dirname, '..', 'dist', 'index.html');
+    await editorWin.loadFile(indexPath, { search: query.slice(1) });
+  }
+
+  editorWin.on('closed', () => {
+    editorWindows.delete(chapterId);
+  });
+
+  return { opened: true, reused: false };
+});
 
 // ---------------------------------------------------------------------------
 // Auto-updater (electron-updater) — silent download, user-triggered install
@@ -3201,7 +3271,7 @@ ipcMain.handle('code:execute', async (event, payload) => {
     if (!previous.process.killed) {
       previous.process.kill();
     }
-    previous.sender.send('code:exit', {
+    broadcastCodeEvent('code:exit', {
       chapterId: previous.chapterId,
       exitCode: -1,
       signal: 'SIGTERM',
@@ -3250,7 +3320,7 @@ ipcMain.handle('code:execute', async (event, payload) => {
     if (!text) {
       return;
     }
-    active.sender.send('code:output', { chapterId, stream, data: text });
+    broadcastCodeEvent('code:output', { chapterId, stream, data: text });
   };
 
   proc.stdout?.on('data', (chunk) => sendOutput('stdout', chunk));
@@ -3286,7 +3356,7 @@ ipcMain.handle('code:execute', async (event, payload) => {
       killed: Boolean(current.killed),
     };
     cleanupCodeExecution(chapterSegment);
-    current.sender.send('code:exit', payload);
+    broadcastCodeEvent('code:exit', payload);
     fs.unlink(current.tempRunPath).catch(() => {});
   });
 
@@ -3418,13 +3488,13 @@ ipcMain.handle('pty:spawn', async (event, payload) => {
 
   ptyProcess.onData((data) => {
     if (entry.replaced) return; // Don't send data from a replaced PTY to the renderer
-    try { entry.sender.send('pty:data', { chapterId: rawChapterId, data }); } catch {}
+    try { broadcastCodeEvent('pty:data', { chapterId: rawChapterId, data }); } catch {}
   });
 
   ptyProcess.onExit(({ exitCode, signal }) => {
     if (entry.replaced) return; // Silently ignore — a new PTY already took over this slot
     ptyByChapter.delete(chapterSegment);
-    try { entry.sender.send('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
+    try { broadcastCodeEvent('pty:exit', { chapterId: rawChapterId, exitCode, signal }); } catch {}
   });
 
   // Auto-activate conda env.
