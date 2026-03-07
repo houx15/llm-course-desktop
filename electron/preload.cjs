@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('tutorApp', {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
+  clearAllData: () => ipcRenderer.invoke('app:clearAllData'),
   checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
   installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
   onUpdateAvailable: (callback) => {

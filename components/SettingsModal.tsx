@@ -749,6 +749,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                     <p className="text-[11px] text-gray-400 mt-2">退出后需重新登录，本地数据不会删除。</p>
                   </div>
                 )}
+
+                {/* Clear all data / Uninstall helper */}
+                <div className="border-t border-gray-100 pt-4">
+                  <h4 className="text-sm font-semibold text-gray-800 mb-2">清除本地数据</h4>
+                  <p className="text-[11px] text-gray-500 mb-3">
+                    删除所有本地文件（设置、缓存、工作区代码、下载的课程包）。此操作不可撤销。
+                  </p>
+                  <button
+                    onClick={async () => {
+                      const confirmed = window.confirm('确定要删除所有本地数据吗？此操作不可撤销，删除后应用将自动退出。');
+                      if (!confirmed) return;
+                      try {
+                        const settings = await window.tutorApp?.getSettings();
+                        const dataDir = settings?.storageRoot || '';
+                        if (dataDir) {
+                          // Open the data folder so user can verify / manually delete if needed
+                          await window.tutorApp?.openCodePath(dataDir);
+                        }
+                        await window.tutorApp?.clearAllData();
+                      } catch (err) {
+                        alert(`请手动删除数据文件夹：~/.knoweia\n\n${err instanceof Error ? err.message : '操作失败'}`);
+                      }
+                    }}
+                    className="px-4 py-2 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-red-50 hover:text-red-700 border border-gray-200 hover:border-red-200 transition-colors"
+                  >
+                    删除所有本地数据
+                  </button>
+                </div>
               </div>
             )}
 

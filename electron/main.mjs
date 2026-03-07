@@ -1238,6 +1238,17 @@ app.on('before-quit', () => {
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
 ipcMain.handle('app:relaunch', () => { app.relaunch(); app.quit(); });
+
+ipcMain.handle('app:clearAllData', async () => {
+  // Remove the entire userData directory (~/.knoweia)
+  const dataDir = app.getPath('userData');
+  try {
+    await fs.rm(dataDir, { recursive: true, force: true });
+  } catch (err) {
+    console.warn('[clearAllData] Failed to remove data dir:', err);
+  }
+  app.quit();
+});
 ipcMain.handle('app:checkForUpdates', async () => {
   if (isDev) return { updateAvailable: false };
   try {
