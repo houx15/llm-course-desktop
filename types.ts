@@ -345,8 +345,6 @@ declare global {
       killTerminal: (payload: { chapterId: string }) => Promise<{ killed: boolean }>;
       onTerminalData: (callback: (payload: { chapterId: string; data: string }) => void) => () => void;
       onTerminalExit: (callback: (payload: { chapterId: string; exitCode: number; signal?: number }) => void) => () => void;
-      openEditorWindow: (payload: { chapterId: string; chapterTitle?: string }) => Promise<{ opened: boolean; reused?: boolean }>;
-
       collectBugReport: () => Promise<{
         appVersion: string;
         platform: string;

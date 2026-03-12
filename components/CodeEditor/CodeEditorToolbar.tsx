@@ -1,7 +1,8 @@
 import React from 'react';
-import { Loader2, Play, Square, UploadCloud, ExternalLink } from 'lucide-react';
+import { Loader2, Play, Square, UploadCloud } from 'lucide-react';
 
 export type EditorMode = 'notebook' | 'script';
+export type EditorLayout = 'right' | 'bottom' | 'left' | 'top';
 
 interface CodeEditorToolbarProps {
   mode: EditorMode;
@@ -10,11 +11,57 @@ interface CodeEditorToolbarProps {
   onStop: () => void;
   onOpenJupyter?: () => void;
   onSubmit?: () => void;
-  onPopOut?: () => void;
+  layout?: EditorLayout;
+  onLayoutChange?: (layout: EditorLayout) => void;
   isSubmitting?: boolean;
   submitDone?: boolean;
   submitProgress?: string;
 }
+
+const LAYOUT_OPTIONS: { value: EditorLayout; label: string; icon: React.ReactNode }[] = [
+  {
+    value: 'right',
+    label: '编辑器在右',
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+        <rect x="1" y="1" width="12" height="12" rx="1" />
+        <line x1="7" y1="1" x2="7" y2="13" />
+      </svg>
+    ),
+  },
+  {
+    value: 'bottom',
+    label: '编辑器在下',
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+        <rect x="1" y="1" width="12" height="12" rx="1" />
+        <line x1="1" y1="7" x2="13" y2="7" />
+      </svg>
+    ),
+  },
+  {
+    value: 'left',
+    label: '编辑器在左',
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+        <rect x="1" y="1" width="12" height="12" rx="1" />
+        <line x1="7" y1="1" x2="7" y2="13" />
+        <rect x="1.5" y="1.5" width="5" height="11" rx="0.5" fill="currentColor" fillOpacity="0.15" stroke="none" />
+      </svg>
+    ),
+  },
+  {
+    value: 'top',
+    label: '编辑器在上',
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2">
+        <rect x="1" y="1" width="12" height="12" rx="1" />
+        <line x1="1" y1="7" x2="13" y2="7" />
+        <rect x="1.5" y="1.5" width="11" height="5" rx="0.5" fill="currentColor" fillOpacity="0.15" stroke="none" />
+      </svg>
+    ),
+  },
+];
 
 const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
   mode,
@@ -23,7 +70,8 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
   onStop,
   onOpenJupyter,
   onSubmit,
-  onPopOut,
+  layout,
+  onLayoutChange,
   isSubmitting = false,
   submitDone = false,
   submitProgress,
@@ -57,15 +105,23 @@ const CodeEditorToolbar: React.FC<CodeEditorToolbarProps> = ({
           </button>
         )}
 
-        {onPopOut && (
-          <button
-            onClick={onPopOut}
-            className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-            title="在新窗口中打开编辑器"
-          >
-            <ExternalLink size={13} />
-            新窗口
-          </button>
+        {layout && onLayoutChange && (
+          <div className="flex items-center border border-gray-200 rounded overflow-hidden">
+            {LAYOUT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onLayoutChange(opt.value)}
+                className={`p-1.5 transition-colors ${
+                  layout === opt.value
+                    ? 'bg-gray-800 text-white'
+                    : 'bg-gray-50 text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+                title={opt.label}
+              >
+                {opt.icon}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 

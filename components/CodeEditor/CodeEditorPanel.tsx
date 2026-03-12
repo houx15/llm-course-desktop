@@ -9,7 +9,7 @@ import {
   listChapterCloudFiles,
   downloadFromUrl,
 } from '../../services/backendClient';
-import CodeEditorToolbar, { EditorMode } from './CodeEditorToolbar';
+import CodeEditorToolbar, { EditorMode, EditorLayout } from './CodeEditorToolbar';
 import OutputPanel, { OutputChunk } from './OutputPanel';
 import TerminalPanel from './TerminalPanel';
 import NotebookEditor, { buildDefaultNotebook } from './NotebookEditor';
@@ -38,7 +38,8 @@ interface CodeEditorPanelProps {
   onOutputGenerated?: (output: string) => void;
   onCodeInjectionHandled?: (injectionId: number) => void;
   onSendOutputToChatInput?: (message: string) => void;
-  onPopOut?: () => void;
+  layout?: EditorLayout;
+  onLayoutChange?: (layout: EditorLayout) => void;
 }
 
 type MonacoEditorProps = {
@@ -79,7 +80,8 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   onOutputGenerated,
   onCodeInjectionHandled,
   onSendOutputToChatInput,
-  onPopOut,
+  layout,
+  onLayoutChange,
 }) => {
   const [mode, setMode] = useState<EditorMode>('notebook');
   const [files, setFiles] = useState<CodeWorkspaceFile[]>([]);
@@ -656,7 +658,8 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         onStop={handleStop}
         onOpenJupyter={handleOpenJupyter}
         onSubmit={handleSubmit}
-        onPopOut={onPopOut}
+        layout={layout}
+        onLayoutChange={onLayoutChange}
         isSubmitting={isSubmitting}
         submitDone={submitDone}
         submitProgress={submitProgress ? `同步中 (${submitProgress})` : undefined}

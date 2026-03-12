@@ -6,7 +6,7 @@ import RoadmapPanel from './components/RoadmapPanel';
 import TopBar from './components/TopBar';
 import AuthScreen from './components/AuthScreen';
 import Dashboard from './components/Dashboard';
-import { CodeEditorPanel } from './components/CodeEditor';
+import { CodeEditorPanel, type EditorLayout } from './components/CodeEditor';
 import { OutputChunk } from './components/CodeEditor';
 import { OnboardingModal } from './components/OnboardingModal';
 import { authService } from './services/authService';
@@ -23,39 +23,7 @@ import LlmErrorModal from './components/LlmErrorModal';
 import ChapterUpdateModal from './components/ChapterUpdateModal';
 import { Download, Terminal, ChevronUp, ChevronLeft, ChevronRight, ArrowUpCircle } from 'lucide-react';
 
-// Pop-out editor window mode — renders only CodeEditorPanel
-const editorWindowParams = new URLSearchParams(window.location.search);
-const popOutChapterId = editorWindowParams.get('editorWindow');
-const popOutTitle = editorWindowParams.get('title') || '';
-
-const EditorWindowApp: React.FC = () => {
-  if (!popOutChapterId) return null;
-  const handleBackToMain = () => {
-    // Close this pop-out window — the user can reopen the inline editor in the main window
-    window.close();
-  };
-  return (
-    <div className="flex flex-col h-screen bg-white font-sans text-gray-900">
-      {/* Mini top bar with back button */}
-      <div className="shrink-0 h-9 bg-gray-50 border-b border-gray-200 flex items-center px-3 gap-2 [-webkit-app-region:drag]">
-        <button
-          onClick={handleBackToMain}
-          className="text-xs text-gray-500 hover:text-gray-900 bg-white border border-gray-200 rounded px-2 py-0.5 hover:bg-gray-100 transition-colors [-webkit-app-region:no-drag]"
-        >
-          返回主窗口
-        </button>
-        <span className="text-xs text-gray-400 truncate">{popOutTitle || popOutChapterId}</span>
-      </div>
-      <CodeEditorPanel
-        chapterId={popOutChapterId}
-        chapterTitle={popOutTitle}
-        visible={true}
-      />
-    </div>
-  );
-};
-
-const MainApp: React.FC = () => {
+const App: React.FC = () => {
   // Auth State
   const [user, setUser] = useState<User | null>(null);
 
@@ -74,6 +42,7 @@ const MainApp: React.FC = () => {
   // undefined = auto-detect (first load), string = specific session, null = force-create new
   const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(undefined);
   const [isCodeEditorOpen, setIsCodeEditorOpen] = useState(false);
+  const [editorLayout, setEditorLayout] = useState<EditorLayout>('right');
   const [showResources, setShowResources] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [chapterRuntimeState, setChapterRuntimeState] = useState<
@@ -238,13 +207,26 @@ const MainApp: React.FC = () => {
       return;
     }
 
+    const isHorizontal = editorLayout === 'left' || editorLayout === 'right';
+
     const onMouseMove = (event: MouseEvent) => {
       const host = editorHostRef.current;
       if (!host) return;
       const rect = host.getBoundingClientRect();
-      const desired = rect.right - event.clientX;
-      const nextWidth = Math.max(320, Math.min(rect.width - 380, desired));
-      setEditorWidths((prev) => ({ ...prev, [currentChapter.id]: nextWidth }));
+
+      if (isHorizontal) {
+        const desired = editorLayout === 'right'
+          ? rect.right - event.clientX
+          : event.clientX - rect.left;
+        const nextSize = Math.max(320, Math.min(rect.width - 380, desired));
+        setEditorWidths((prev) => ({ ...prev, [currentChapter.id]: nextSize }));
+      } else {
+        const desired = editorLayout === 'bottom'
+          ? rect.bottom - event.clientY
+          : event.clientY - rect.top;
+        const nextSize = Math.max(200, Math.min(rect.height - 200, desired));
+        setEditorWidths((prev) => ({ ...prev, [currentChapter.id]: nextSize }));
+      }
     };
 
     const onMouseUp = () => {
@@ -257,7 +239,7 @@ const MainApp: React.FC = () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [isResizingEditor, currentChapter?.id]);
+  }, [isResizingEditor, currentChapter?.id, editorLayout]);
 
   useEffect(() => {
     if (!isResizingLeft) return;
@@ -853,7 +835,9 @@ const MainApp: React.FC = () => {
       <div
         className="flex flex-1 overflow-hidden relative"
         style={{
-          cursor: isResizingLeft || isResizingRight ? 'col-resize' : undefined,
+          cursor: isResizingLeft || isResizingRight ? 'col-resize'
+            : isResizingEditor ? ((editorLayout === 'left' || editorLayout === 'right') ? 'col-resize' : 'row-resize')
+            : undefined,
           userSelect: isResizingLeft || isResizingRight || isResizingEditor ? 'none' : undefined,
         }}
       >
@@ -908,80 +892,101 @@ const MainApp: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 bg-white relative">
           <div ref={editorHostRef} className="flex-1 overflow-hidden relative flex min-w-0">
             {currentChapter ? (
-              <>
-                <div className="flex-1 min-w-0">
-                  <CentralChat
-                    chapter={currentChapter}
-                    courseId={activeCourseId || currentPhase?.id || ''}
-                    requestedSessionId={activeSessionId}
-                    onSessionIdChange={handleSessionIdChange}
-                    onStartCoding={openCodeEditor}
-                    onRuntimeEvent={(event) => handleChapterRuntimeEvent(currentChapter.id, event)}
-                    onOpenInEditor={(payload) => handleOpenCodeFromChat(currentChapter.id, payload)}
-                    injectedInput={currentChatInjection}
-                    onInjectedHandled={(injectionId) => {
-                      setChatInjections((prev) => {
-                        const current = prev[currentChapter.id];
-                        if (!current || current.id !== injectionId) {
-                          return prev;
-                        }
-                        return { ...prev, [currentChapter.id]: null };
-                      });
-                    }}
-                  />
-                </div>
+              (() => {
+                const isHorizontal = editorLayout === 'left' || editorLayout === 'right';
+                const editorFirst = editorLayout === 'left' || editorLayout === 'top';
 
-                {isCodeEditorOpen && (
+                const chatPanel = (
+                  <div className={isHorizontal ? 'flex-1 min-w-0 h-full' : 'flex-1 min-h-0 w-full'}>
+                    <CentralChat
+                      chapter={currentChapter}
+                      courseId={activeCourseId || currentPhase?.id || ''}
+                      requestedSessionId={activeSessionId}
+                      onSessionIdChange={handleSessionIdChange}
+                      onStartCoding={openCodeEditor}
+                      onRuntimeEvent={(event) => handleChapterRuntimeEvent(currentChapter.id, event)}
+                      onOpenInEditor={(payload) => handleOpenCodeFromChat(currentChapter.id, payload)}
+                      injectedInput={currentChatInjection}
+                      onInjectedHandled={(injectionId) => {
+                        setChatInjections((prev) => {
+                          const current = prev[currentChapter.id];
+                          if (!current || current.id !== injectionId) {
+                            return prev;
+                          }
+                          return { ...prev, [currentChapter.id]: null };
+                        });
+                      }}
+                    />
+                  </div>
+                );
+
+                const resizeDivider = isCodeEditorOpen ? (
                   <div
                     onMouseDown={() => setIsResizingEditor(true)}
-                    className="w-1 shrink-0 cursor-col-resize bg-gray-100 hover:bg-gray-300 transition-colors"
-                  />
-                )}
-                <div
-                  className="shrink-0 h-full overflow-hidden transition-[width] duration-200"
-                  style={{ width: isCodeEditorOpen ? editorWidth : 0 }}
-                >
-                  <CodeEditorPanel
-                    chapterId={currentChapter.id}
-                    chapterTitle={currentChapter.title}
-                    visible={isCodeEditorOpen}
-                    initialOutputChunks={currentEditorOutput}
-                    initialActiveFile={currentEditorFile}
-                    codeInjection={currentCodeInjection}
-                    onPopOut={() => {
-                      setIsCodeEditorOpen(false);
-                      window.tutorApp?.openEditorWindow({
-                        chapterId: currentChapter.id,
-                        chapterTitle: currentChapter.title,
-                      });
-                    }}
-                    onCodeInjectionHandled={(injectionId) => {
-                      setCodeInjections((prev) => {
-                        const current = prev[currentChapter.id];
-                        if (!current || current.id !== injectionId) {
-                          return prev;
-                        }
-                        return { ...prev, [currentChapter.id]: null };
-                      });
-                    }}
-                    onActiveFileChange={(filename) =>
-                      setEditorActiveFiles((prev) => ({
-                        ...prev,
-                        [currentChapter.id]: filename,
-                      }))
+                    className={
+                      isHorizontal
+                        ? 'w-1 shrink-0 cursor-col-resize bg-gray-100 hover:bg-gray-300 transition-colors'
+                        : 'h-1 shrink-0 cursor-row-resize bg-gray-100 hover:bg-gray-300 transition-colors'
                     }
-                    onOutputChange={(chunks) =>
-                      setEditorOutputs((prev) => ({
-                        ...prev,
-                        [currentChapter.id]: chunks,
-                      }))
-                    }
-                    onSendOutputToChatInput={(message) => {
-                      pushChatInjection(currentChapter.id, message, false, false);
-                    }}
                   />
-                </div>
-              </>
+                ) : null;
+
+                const editorPanel = (
+                  <div
+                    className="shrink-0 overflow-hidden transition-all duration-200"
+                    style={
+                      isHorizontal
+                        ? { width: isCodeEditorOpen ? editorWidth : 0, height: '100%' }
+                        : { height: isCodeEditorOpen ? editorWidth : 0, width: '100%' }
+                    }
+                  >
+                    <CodeEditorPanel
+                      chapterId={currentChapter.id}
+                      chapterTitle={currentChapter.title}
+                      visible={isCodeEditorOpen}
+                      initialOutputChunks={currentEditorOutput}
+                      initialActiveFile={currentEditorFile}
+                      codeInjection={currentCodeInjection}
+                      layout={editorLayout}
+                      onLayoutChange={setEditorLayout}
+                      onCodeInjectionHandled={(injectionId) => {
+                        setCodeInjections((prev) => {
+                          const current = prev[currentChapter.id];
+                          if (!current || current.id !== injectionId) {
+                            return prev;
+                          }
+                          return { ...prev, [currentChapter.id]: null };
+                        });
+                      }}
+                      onActiveFileChange={(filename) =>
+                        setEditorActiveFiles((prev) => ({
+                          ...prev,
+                          [currentChapter.id]: filename,
+                        }))
+                      }
+                      onOutputChange={(chunks) =>
+                        setEditorOutputs((prev) => ({
+                          ...prev,
+                          [currentChapter.id]: chunks,
+                        }))
+                      }
+                      onSendOutputToChatInput={(message) => {
+                        pushChatInjection(currentChapter.id, message, false, false);
+                      }}
+                    />
+                  </div>
+                );
+
+                return (
+                  <div className={`flex-1 min-w-0 min-h-0 flex ${isHorizontal ? 'flex-row' : 'flex-col'}`}>
+                    {editorFirst ? (
+                      <>{editorPanel}{resizeDivider}{chatPanel}</>
+                    ) : (
+                      <>{chatPanel}{resizeDivider}{editorPanel}</>
+                    )}
+                  </div>
+                );
+              })()
             ) : currentPhase ? (
               <div className="h-full overflow-y-auto w-full">
                 <PhaseView phase={currentPhase} onStart={handleStartPhase} />
@@ -1080,13 +1085,6 @@ const MainApp: React.FC = () => {
       )}
     </>
   );
-};
-
-const App: React.FC = () => {
-  if (popOutChapterId) {
-    return <EditorWindowApp />;
-  }
-  return <MainApp />;
 };
 
 export default App;

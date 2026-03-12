@@ -100,6 +100,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [expanded, setExpanded] = useState(false);
   const composingRef = useRef(false);
   const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const streamMutedRef = useRef(false);
 
   const getLatestBundleVersion = async (): Promise<string | undefined> => {
     try {
@@ -526,6 +527,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
     setMessages((prev) => [...prev, userMsg, { role: 'model', text: '' }]);
     setIsLoading(true);
+    streamMutedRef.current = false;
 
     const startTime = Date.now();
     let modelResponseText = '';
@@ -534,7 +536,13 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
     try {
       await runtimeManager.streamMessage(sessionId, userMsg.text, (event) => {
+        // Always forward runtime events (roadmap/memo updates) even when muted,
+        // so the sidecar state stays consistent
         onRuntimeEvent?.(event);
+
+        // But stop updating the chat UI when muted
+        if (streamMutedRef.current) return;
+
         if (event.type === 'companion_chunk') {
           modelResponseText += event.content || '';
           appendToLatestModelMessage(event.content || '');
@@ -613,7 +621,9 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
       return true;
     } catch (error) {
-      appendToLatestModelMessage(`抱歉，遇到了一些错误，请重试。\n\n${error instanceof Error ? error.message : ''}`);
+      if (!streamMutedRef.current) {
+        appendToLatestModelMessage(`抱歉，遇到了一些错误，请重试。\n\n${error instanceof Error ? error.message : ''}`);
+      }
       return false;
     } finally {
       setIsLoading(false);
@@ -672,7 +682,9 @@ const CentralChat: React.FC<CentralChatProps> = ({
   };
 
   const handleStop = () => {
-    runtimeManager.cancelStream();
+    // Mute the stream — stop updating chat UI but let the stream finish
+    // so the sidecar session state stays consistent (no lost progress)
+    streamMutedRef.current = true;
     setIsLoading(false);
 
     setMessages((prev) => {
@@ -685,11 +697,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
       if (next.length > 0 && next[next.length - 1].role === 'model' && next[next.length - 1].text.trim()) {
         const last = next[next.length - 1];
         next[next.length - 1] = { ...last, interrupted: true };
-      }
-      // Restore the user message to the input box and remove it from history
-      if (next.length > 0 && next[next.length - 1].role === 'user') {
-        const userMsg = next.pop()!;
-        setInputValue(userMsg.text);
       }
       return next;
     });
