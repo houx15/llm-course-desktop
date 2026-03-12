@@ -179,7 +179,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   ): Message[] => {
     return turns.flatMap((t, idx) => {
       const result: Message[] = [];
-      if (t.user_message) result.push({ role: 'user', text: t.user_message });
+      if (t.user_message && !t.user_message.startsWith('[系统：')) result.push({ role: 'user', text: t.user_message });
       if (t.companion_response) {
         // Prefer persisted token_usage from sidecar, fall back to in-memory cache
         let tokenUsage: { input: number; output: number } | undefined;

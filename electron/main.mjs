@@ -2958,7 +2958,7 @@ ipcMain.handle('runtime:createSession', async (_event, payload) => {
     }
 
     const createController = new AbortController();
-    const createTimeout = setTimeout(() => createController.abort(), 120_000);
+    const createTimeout = setTimeout(() => createController.abort(), 300_000);
     let response;
     try {
       response = await fetch(`${baseUrl}/api/session/new`, {
