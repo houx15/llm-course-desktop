@@ -350,6 +350,24 @@ export const runtimeManager = {
     }
   },
 
+  /**
+   * Cancel the currently streaming message on the sidecar, then abort the HTTP stream.
+   * The sidecar will discard the in-progress turn (no state mutation).
+   */
+  async cancelMessage(sessionId: string) {
+    const baseUrl = normalizeBaseUrl(SIDECAR_BASE_URL);
+    try {
+      // Tell sidecar to cancel — it will stop the agent pipeline and skip saving the turn
+      await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/message/cancel`, {
+        method: 'POST',
+      });
+    } catch (err) {
+      console.warn('[runtimeManager] cancelMessage failed:', err);
+    }
+    // Then abort the HTTP stream so the client stops reading
+    this.cancelStream();
+  },
+
   async streamMessage(sessionId: string, message: string, onEvent: (event: NormalizedStreamEvent) => void) {
     if (!window.tutorApp) {
       throw new Error('tutorApp API unavailable');

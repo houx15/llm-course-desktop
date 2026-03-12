@@ -100,7 +100,11 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [expanded, setExpanded] = useState(false);
   const composingRef = useRef(false);
   const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const streamMutedRef = useRef(false);
+  const sendGenerationRef = useRef(0);
+
+  // Persist token usage per turn so it survives re-entry
+  // Key: `${sessionId}:${turnIndex}` → { input, output }
+  const tokenUsageCacheRef = useRef<Map<string, { input: number; output: number }>>(new Map());
 
   const getLatestBundleVersion = async (): Promise<string | undefined> => {
     try {
@@ -171,12 +175,16 @@ const CentralChat: React.FC<CentralChatProps> = ({
   }, [expanded]);
 
   const turnsToMessages = (
-    turns: Array<{ user_message: string; companion_response: string }>
+    turns: Array<{ user_message: string; companion_response: string }>,
+    sid?: string,
   ): Message[] => {
-    return turns.flatMap((t) => {
+    return turns.flatMap((t, idx) => {
       const result: Message[] = [];
       if (t.user_message) result.push({ role: 'user', text: t.user_message });
-      if (t.companion_response) result.push({ role: 'model', text: t.companion_response });
+      if (t.companion_response) {
+        const cached = sid ? tokenUsageCacheRef.current.get(`${sid}:${idx}`) : undefined;
+        result.push({ role: 'model', text: t.companion_response, ...(cached ? { tokenUsage: cached } : {}) });
+      }
       return result;
     });
   };
@@ -222,7 +230,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
     if (cancelled()) return;
 
     setSessionId(targetSessionId);
-    const msgs = turnsToMessages(turns);
+    const msgs = turnsToMessages(turns, targetSessionId);
     // Always prepend the initial bot greeting — it's not part of any turn
     setMessages([{ role: 'model', text: chapter.initialMessage }, ...msgs]);
     if (report) {
@@ -290,7 +298,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
       user_message: t.user_message,
       companion_response: t.companion_response,
     }));
-    const msgs = turnsToMessages(sourceTurns);
+    const msgs = turnsToMessages(sourceTurns, targetSessionId);
     // Always prepend the initial bot greeting — it's not part of any turn
     setMessages([{ role: 'model', text: chapter.initialMessage }, ...msgs]);
     if (report) {
@@ -516,7 +524,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   };
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || !sessionId || isLoading) {
+    if (!text.trim() || !sessionId) {
       return false;
     }
 
@@ -527,7 +535,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
     setMessages((prev) => [...prev, userMsg, { role: 'model', text: '' }]);
     setIsLoading(true);
-    streamMutedRef.current = false;
+    // Bump generation so any residual callbacks from a cancelled stream are ignored
+    const thisGeneration = ++sendGenerationRef.current;
 
     const startTime = Date.now();
     let modelResponseText = '';
@@ -536,12 +545,10 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
     try {
       await runtimeManager.streamMessage(sessionId, userMsg.text, (event) => {
-        // Always forward runtime events (roadmap/memo updates) even when muted,
-        // so the sidecar state stays consistent
         onRuntimeEvent?.(event);
 
-        // But stop updating the chat UI when muted
-        if (streamMutedRef.current) return;
+        // Ignore callbacks from a stale (cancelled) generation
+        if (sendGenerationRef.current !== thisGeneration) return;
 
         if (event.type === 'companion_chunk') {
           modelResponseText += event.content || '';
@@ -551,7 +558,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
           appendToLatestModelMessage(`\n\n[错误] ${event.message}`);
         }
         if (event.type === 'llm_error') {
-          // Remove the empty model message bubble — the modal will show the error
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.role === 'model' && !last.text) {
@@ -586,10 +592,16 @@ const CentralChat: React.FC<CentralChatProps> = ({
         }
       });
 
+      // If this generation was cancelled, skip post-processing
+      if (sendGenerationRef.current !== thisGeneration) return false;
+
       // Attach token usage totals to the last model message
       const totalInput = Object.values(tokenUsage).reduce((s, v) => s + v.input, 0);
       const totalOutput = Object.values(tokenUsage).reduce((s, v) => s + v.output, 0);
       if (totalInput > 0 || totalOutput > 0) {
+        if (capturedTurnIndex !== undefined && sessionId) {
+          tokenUsageCacheRef.current.set(`${sessionId}:${capturedTurnIndex}`, { input: totalInput, output: totalOutput });
+        }
         setMessages((prev) => {
           const next = [...prev];
           for (let i = next.length - 1; i >= 0; i--) {
@@ -621,12 +633,18 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
       return true;
     } catch (error) {
-      if (!streamMutedRef.current) {
+      // AbortError is expected when user cancels — not a real error
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return false;
+      }
+      if (sendGenerationRef.current === thisGeneration) {
         appendToLatestModelMessage(`抱歉，遇到了一些错误，请重试。\n\n${error instanceof Error ? error.message : ''}`);
       }
       return false;
     } finally {
-      setIsLoading(false);
+      if (sendGenerationRef.current === thisGeneration) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -682,9 +700,14 @@ const CentralChat: React.FC<CentralChatProps> = ({
   };
 
   const handleStop = () => {
-    // Mute the stream — stop updating chat UI but let the stream finish
-    // so the sidecar session state stays consistent (no lost progress)
-    streamMutedRef.current = true;
+    // Tell the sidecar to cancel the current turn (it will discard it without
+    // saving to history), then abort the HTTP stream on our side.
+    if (sessionId) {
+      runtimeManager.cancelMessage(sessionId);
+    }
+    // Bump generation so any residual callbacks are ignored
+    sendGenerationRef.current++;
+    pendingStreamRef.current = null;
     setIsLoading(false);
 
     setMessages((prev) => {
