@@ -559,6 +559,10 @@ const App: React.FC = () => {
       const sessionsWithTurns = allSessions.filter(s => s.turnCount > 0);
       const existingSessionVersion = sessionsWithTurns[0]?.bundleVersion;
 
+      console.log('[ChapterUpdate] installed chapter bundle:', latestBundleVersion,
+        '| session bundle:', existingSessionVersion,
+        '| sessions with turns:', sessionsWithTurns.length);
+
       if (
         sessionsWithTurns.length > 0 &&
         latestBundleVersion &&

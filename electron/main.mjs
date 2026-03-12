@@ -3135,21 +3135,29 @@ ipcMain.handle('code:listFiles', async (_event, payload) => {
 
   const { chapterDir } = await ensureChapterWorkspaceDir(rawChapterId);
   await seedWorkspaceFromCurriculumIfNeeded(rawChapterId, chapterDir);
-  const entries = await fs.readdir(chapterDir, { withFileTypes: true });
-  const files = [];
 
-  for (const entry of entries) {
-    if (!entry.isFile()) {
-      continue;
+  // Recursively list all files, using relative paths like "data/file.csv"
+  const files = [];
+  const walk = async (dir, prefix) => {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      // Skip hidden files/folders (dotfiles)
+      if (entry.name.startsWith('.')) continue;
+      const relativeName = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const fullPath = assertInside(chapterDir, path.join(dir, entry.name));
+      if (entry.isFile()) {
+        const stats = await fs.stat(fullPath);
+        files.push({
+          name: relativeName,
+          size: Number(stats.size || 0),
+          modified: Number(stats.mtimeMs || Date.now()),
+        });
+      } else if (entry.isDirectory()) {
+        await walk(fullPath, relativeName);
+      }
     }
-    const fullPath = assertInside(chapterDir, path.join(chapterDir, entry.name));
-    const stats = await fs.stat(fullPath);
-    files.push({
-      name: entry.name,
-      size: Number(stats.size || 0),
-      modified: Number(stats.mtimeMs || Date.now()),
-    });
-  }
+  };
+  await walk(chapterDir, '');
 
   files.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   return { files };
