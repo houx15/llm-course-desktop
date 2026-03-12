@@ -1034,8 +1034,8 @@ const createWindow = async () => {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 1080,
-    minHeight: 720,
+    minWidth: 680,
+    minHeight: 480,
     backgroundColor: '#ffffff',
     title: 'Knoweia',
     icon: appIconPath,

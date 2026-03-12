@@ -30,8 +30,22 @@ const popOutTitle = editorWindowParams.get('title') || '';
 
 const EditorWindowApp: React.FC = () => {
   if (!popOutChapterId) return null;
+  const handleBackToMain = () => {
+    // Close this pop-out window — the user can reopen the inline editor in the main window
+    window.close();
+  };
   return (
     <div className="flex flex-col h-screen bg-white font-sans text-gray-900">
+      {/* Mini top bar with back button */}
+      <div className="shrink-0 h-9 bg-gray-50 border-b border-gray-200 flex items-center px-3 gap-2 [-webkit-app-region:drag]">
+        <button
+          onClick={handleBackToMain}
+          className="text-xs text-gray-500 hover:text-gray-900 bg-white border border-gray-200 rounded px-2 py-0.5 hover:bg-gray-100 transition-colors [-webkit-app-region:no-drag]"
+        >
+          返回主窗口
+        </button>
+        <span className="text-xs text-gray-400 truncate">{popOutTitle || popOutChapterId}</span>
+      </div>
       <CodeEditorPanel
         chapterId={popOutChapterId}
         chapterTitle={popOutTitle}
@@ -935,6 +949,7 @@ const MainApp: React.FC = () => {
                     initialActiveFile={currentEditorFile}
                     codeInjection={currentCodeInjection}
                     onPopOut={() => {
+                      setIsCodeEditorOpen(false);
                       window.tutorApp?.openEditorWindow({
                         chapterId: currentChapter.id,
                         chapterTitle: currentChapter.title,

@@ -674,6 +674,25 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const handleStop = () => {
     runtimeManager.cancelStream();
     setIsLoading(false);
+
+    setMessages((prev) => {
+      const next = [...prev];
+      // Remove empty model response at the end
+      if (next.length > 0 && next[next.length - 1].role === 'model' && !next[next.length - 1].text.trim()) {
+        next.pop();
+      }
+      // If the last model message has partial content, mark it as interrupted
+      if (next.length > 0 && next[next.length - 1].role === 'model' && next[next.length - 1].text.trim()) {
+        const last = next[next.length - 1];
+        next[next.length - 1] = { ...last, interrupted: true };
+      }
+      // Restore the user message to the input box and remove it from history
+      if (next.length > 0 && next[next.length - 1].role === 'user') {
+        const userMsg = next.pop()!;
+        setInputValue(userMsg.text);
+      }
+      return next;
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -827,9 +846,12 @@ const CentralChat: React.FC<CentralChatProps> = ({
                     </div>
                   )}
                 </div>
+                {msg.role === 'model' && msg.interrupted && (
+                  <span className="text-[10px] text-red-400 mt-1 px-1">（已中断）</span>
+                )}
                 {msg.role === 'model' && msg.tokenUsage && (
                   <span className="text-[10px] text-gray-400 mt-1 px-1">
-                    tokens: {msg.tokenUsage.input} in / {msg.tokenUsage.output} out
+                    Token Usage: {msg.tokenUsage.input} in / {msg.tokenUsage.output} out
                   </span>
                 )}
               </div>

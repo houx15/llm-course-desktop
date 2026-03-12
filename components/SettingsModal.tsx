@@ -755,6 +755,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                   <h4 className="text-sm font-semibold text-gray-800 mb-2">清除本地数据</h4>
                   <p className="text-[11px] text-gray-500 mb-3">
                     删除所有本地文件（设置、缓存、工作区代码、下载的课程包）。此操作不可撤销。
+                    {navigator.platform?.startsWith('Win') && ' Windows 用户如需卸载应用本体，请在"设置 → 应用"中操作。'}
                   </p>
                   <button
                     onClick={async () => {

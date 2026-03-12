@@ -15,6 +15,7 @@
     "dev:renderer": "vite",
     "dev:electron": "node -e \"process.env.VITE_DEV_SERVER_URL='http://localhost:3000';require('child_process').execFileSync(require('electron'),['./electron/main.mjs'],{stdio:'inherit',env:{...process.env,VITE_DEV_SERVER_URL:'http://localhost:3000'}})\"",
     "dev:desktop": "concurrently -k \"npm run dev:renderer\" \"npm run dev:electron\"",
+    "dev:desktop:dev": "TUTOR_BACKEND_URL=http://47.93.151.131:10723 VITE_BACKEND_URL=http://47.93.151.131:10723 concurrently -k \"npm run dev:renderer\" \"npm run dev:electron\"",
     "postinstall": "node -e \"if(process.platform!=='win32'){require('child_process').execSync('chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null; chmod +x node_modules/node-pty/build/Release/spawn-helper 2>/dev/null; true',{stdio:'inherit'})}\"",
     "pack:desktop": "npm run build:renderer && npm_config_electron_mirror= electron-builder --dir",
     "build:desktop": "npm run build:renderer && npm_config_electron_mirror= electron-builder"

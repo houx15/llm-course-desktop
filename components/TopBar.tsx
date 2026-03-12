@@ -68,7 +68,7 @@ const TopBar: React.FC<TopBarProps> = ({ user, onLogout, onLogoClick }) => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         onLogout={onLogout}
-        user={user}
+        user={{ ...user, name: displayName }}
         onUserNameChanged={(newName) => setDisplayName(newName)}
       />
     </>
