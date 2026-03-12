@@ -174,15 +174,23 @@ const CentralChat: React.FC<CentralChatProps> = ({
   }, [expanded]);
 
   const turnsToMessages = (
-    turns: Array<{ user_message: string; companion_response: string }>,
+    turns: Array<{ user_message: string; companion_response: string; token_usage?: Record<string, { input_tokens: number; output_tokens: number }> }>,
     sid?: string,
   ): Message[] => {
     return turns.flatMap((t, idx) => {
       const result: Message[] = [];
       if (t.user_message) result.push({ role: 'user', text: t.user_message });
       if (t.companion_response) {
-        const cached = sid ? tokenUsageCacheRef.current.get(`${sid}:${idx}`) : undefined;
-        result.push({ role: 'model', text: t.companion_response, ...(cached ? { tokenUsage: cached } : {}) });
+        // Prefer persisted token_usage from sidecar, fall back to in-memory cache
+        let tokenUsage: { input: number; output: number } | undefined;
+        if (t.token_usage) {
+          const totalInput = Object.values(t.token_usage).reduce((s, v) => s + (v.input_tokens || 0), 0);
+          const totalOutput = Object.values(t.token_usage).reduce((s, v) => s + (v.output_tokens || 0), 0);
+          tokenUsage = { input: totalInput, output: totalOutput };
+        } else {
+          tokenUsage = sid ? tokenUsageCacheRef.current.get(`${sid}:${idx}`) : undefined;
+        }
+        result.push({ role: 'model', text: t.companion_response, ...(tokenUsage ? { tokenUsage } : {}) });
       }
       return result;
     });
