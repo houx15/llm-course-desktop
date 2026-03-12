@@ -161,13 +161,20 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     }, 0);
   };
 
-  const flushPendingSave = () => {
+  /** Flush any pending autosave. If `forChapterId` is provided, only flush if the
+   *  pending doc belongs to that chapter (prevents cross-chapter writes during cleanup). */
+  const flushPendingSave = (forChapterId?: string) => {
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
     const current = latestDocRef.current;
     if (!current.activeFile || skipAutosaveRef.current) {
+      return;
+    }
+    // When called from chapter-switch cleanup, the ref may already point to the
+    // new chapter. Only write if the doc still belongs to the expected chapter.
+    if (forChapterId && current.chapterId !== forChapterId) {
       return;
     }
     codeWorkspace.writeFile(current.chapterId, current.activeFile, current.code).catch(() => {});
@@ -353,7 +360,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     return () => {
       cancelled = true;
       codeWorkspace.kill(chapterId).catch(() => {});
-      flushPendingSave();
+      flushPendingSave(chapterId);
     };
   }, [chapterId]);
 
@@ -398,13 +405,17 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   useEffect(() => {
     // Don't autosave when in notebook mode — the script editor is unmounted and
     // Monaco may fire onChange('') during teardown, which would overwrite the file.
-    if (!activeFile || skipAutosaveRef.current || mode === 'notebook') {
+    // Also skip when switching chapters (bootedForChapterId hasn't caught up yet)
+    // to prevent writing the old chapter's file into the new chapter's workspace.
+    if (!activeFile || skipAutosaveRef.current || mode === 'notebook' || bootedForChapterId !== chapterId) {
       return;
     }
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
     }
     saveTimerRef.current = window.setTimeout(() => {
+      // Double-check we're still on the same chapter when the timer fires
+      if (currentChapterIdRef.current !== chapterId) return;
       codeWorkspace.writeFile(chapterId, activeFile, code).catch(() => {});
       saveTimerRef.current = null;
     }, 1000);
@@ -414,7 +425,7 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         window.clearTimeout(saveTimerRef.current);
       }
     };
-  }, [chapterId, activeFile, code, mode]);
+  }, [chapterId, activeFile, code, mode, bootedForChapterId]);
 
   useEffect(() => {
     if (!codeInjection?.id || !activeFile) {
