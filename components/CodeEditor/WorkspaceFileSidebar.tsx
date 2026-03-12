@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, FilePlus, FolderOpen, RefreshCw, Trash2, PanelLeftClose } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, ChevronDown, ChevronRight, FilePlus, FolderOpen, RefreshCw, Trash2, PanelLeftClose, Folder } from 'lucide-react';
 import { CodeWorkspaceFile } from '../../types';
 
 // ─── File icon ────────────────────────────────────────────────────────────────
@@ -35,12 +35,153 @@ const FileIcon: React.FC<{ name: string; size?: number }> = ({ name, size = 13 }
         <line x1="8" y1="17" x2="16" y2="17" />
       </svg>
     );
+  if (lower.endsWith('.yaml') || lower.endsWith('.yml'))
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400 shrink-0">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+    );
+  if (lower.endsWith('.json'))
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-500 shrink-0">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+    );
   // default: generic file
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 shrink-0">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
     </svg>
+  );
+};
+
+// ─── Tree data structure ──────────────────────────────────────────────────────
+
+interface TreeNode {
+  name: string;       // display name (just the segment, e.g. "data" or "file.py")
+  fullPath: string;   // full relative path (e.g. "data/file.py")
+  isDir: boolean;
+  children: TreeNode[];
+  file?: CodeWorkspaceFile; // only for files
+}
+
+/** Build a tree from flat file list with paths like "data/file.csv" */
+const buildFileTree = (files: CodeWorkspaceFile[]): TreeNode[] => {
+  const root: TreeNode = { name: '', fullPath: '', isDir: true, children: [] };
+
+  for (const file of files) {
+    const parts = file.name.split('/');
+    let current = root;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isLast = i === parts.length - 1;
+      const partPath = parts.slice(0, i + 1).join('/');
+
+      if (isLast) {
+        // File node
+        current.children.push({
+          name: part,
+          fullPath: file.name,
+          isDir: false,
+          children: [],
+          file,
+        });
+      } else {
+        // Directory node — find or create
+        let dir = current.children.find((c) => c.isDir && c.name === part);
+        if (!dir) {
+          dir = { name: part, fullPath: partPath, isDir: true, children: [] };
+          current.children.push(dir);
+        }
+        current = dir;
+      }
+    }
+  }
+
+  // Sort: directories first, then alphabetically
+  const sortChildren = (node: TreeNode) => {
+    node.children.sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+    node.children.forEach(sortChildren);
+  };
+  sortChildren(root);
+
+  return root.children;
+};
+
+// ─── Tree node component ──────────────────────────────────────────────────────
+
+const TreeFileNode: React.FC<{
+  node: TreeNode;
+  depth: number;
+  activeFile: string;
+  deletingFile: string | null;
+  expandedDirs: Set<string>;
+  onToggleDir: (path: string) => void;
+  onSelectFile: (path: string) => void;
+  onContextMenu: (e: React.MouseEvent, filename: string) => void;
+}> = ({ node, depth, activeFile, deletingFile, expandedDirs, onToggleDir, onSelectFile, onContextMenu }) => {
+  const paddingLeft = 12 + depth * 14;
+
+  if (node.isDir) {
+    const isExpanded = expandedDirs.has(node.fullPath);
+    return (
+      <>
+        <button
+          onClick={() => onToggleDir(node.fullPath)}
+          className="flex items-center gap-1 w-full text-left py-0.5 hover:bg-gray-100 group/dir"
+          style={{ paddingLeft }}
+        >
+          {isExpanded
+            ? <ChevronDown size={10} className="text-gray-400 shrink-0" />
+            : <ChevronRight size={10} className="text-gray-400 shrink-0" />
+          }
+          <Folder size={12} className="text-yellow-500 shrink-0" fill="currentColor" />
+          <span className="text-[11px] text-gray-600 truncate font-medium">{node.name}</span>
+        </button>
+        {isExpanded && node.children.map((child) => (
+          <TreeFileNode
+            key={child.fullPath}
+            node={child}
+            depth={depth + 1}
+            activeFile={activeFile}
+            deletingFile={deletingFile}
+            expandedDirs={expandedDirs}
+            onToggleDir={onToggleDir}
+            onSelectFile={onSelectFile}
+            onContextMenu={onContextMenu}
+          />
+        ))}
+      </>
+    );
+  }
+
+  // File node
+  const isActive = node.fullPath === activeFile;
+  const isDeleting = node.fullPath === deletingFile;
+  return (
+    <button
+      onClick={() => onSelectFile(node.fullPath)}
+      onContextMenu={(e) => onContextMenu(e, node.fullPath)}
+      disabled={isDeleting}
+      className={`flex items-center gap-1.5 w-full text-left py-0.5 pr-1 group/file ${
+        isActive
+          ? 'bg-blue-50 text-blue-700'
+          : 'text-gray-700 hover:bg-gray-100'
+      } disabled:opacity-40`}
+      style={{ paddingLeft: paddingLeft + 14 }}
+    >
+      <FileIcon name={node.name} size={12} />
+      <span className="flex-1 text-[11px] truncate" title={node.fullPath}>
+        {node.name}
+      </span>
+    </button>
   );
 };
 
@@ -112,14 +253,36 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
   onRefresh,
   onHide,
 }) => {
-  const [expanded, setExpanded] = useState(true);
+  const [rootExpanded, setRootExpanded] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filename: string } | null>(null);
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const newNameRef = useRef<HTMLInputElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // Build tree from flat file list
+  const tree = useMemo(() => buildFileTree(files), [files]);
+
+  // Auto-expand directories that contain the active file
+  useEffect(() => {
+    if (!activeFile || !activeFile.includes('/')) return;
+    const parts = activeFile.split('/');
+    const dirsToExpand: string[] = [];
+    for (let i = 1; i < parts.length; i++) {
+      dirsToExpand.push(parts.slice(0, i).join('/'));
+    }
+    setExpandedDirs((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const d of dirsToExpand) {
+        if (!next.has(d)) { next.add(d); changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [activeFile]);
 
   useEffect(() => {
     if (creating) {
@@ -142,7 +305,7 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
   const handleStartCreate = () => {
     setNewName('');
     setCreating(true);
-    setExpanded(true);
+    setRootExpanded(true);
   };
 
   const handleConfirmCreate = async () => {
@@ -184,6 +347,18 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
     }
   };
 
+  const handleToggleDir = useCallback((dirPath: string) => {
+    setExpandedDirs((prev) => {
+      const next = new Set(prev);
+      if (next.has(dirPath)) {
+        next.delete(dirPath);
+      } else {
+        next.add(dirPath);
+      }
+      return next;
+    });
+  }, []);
+
   const shortDir = chapterDir ? chapterDir.split('/').slice(-2).join('/') : '';
 
   return (
@@ -224,10 +399,10 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
         {/* Workspace folder row */}
         {chapterDir && (
           <button
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => setRootExpanded((v) => !v)}
             className="flex items-center gap-1 px-2 py-1 w-full text-left hover:bg-gray-100 group"
           >
-            {expanded ? <ChevronDown size={11} className="text-gray-400 shrink-0" /> : <ChevronRight size={11} className="text-gray-400 shrink-0" />}
+            {rootExpanded ? <ChevronDown size={11} className="text-gray-400 shrink-0" /> : <ChevronRight size={11} className="text-gray-400 shrink-0" />}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-yellow-500 shrink-0">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
@@ -246,8 +421,8 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
           </button>
         )}
 
-        {/* File list */}
-        {expanded && (
+        {/* File tree */}
+        {rootExpanded && (
           <div className="flex-1 overflow-y-auto">
             {/* New file input */}
             {creating && (
@@ -265,28 +440,19 @@ const WorkspaceFileSidebar: React.FC<Props> = ({
               </div>
             )}
 
-            {files.map((file) => {
-              const isActive = file.name === activeFile;
-              const isDeleting = file.name === deletingFile;
-              return (
-                <button
-                  key={file.name}
-                  onClick={() => onSelectFile(file.name)}
-                  onContextMenu={(e) => handleContextMenu(e, file.name)}
-                  disabled={isDeleting}
-                  className={`flex items-center gap-1.5 w-full text-left pl-5 pr-1 py-0.5 group/file ${
-                    isActive
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  } disabled:opacity-40`}
-                >
-                  <FileIcon name={file.name} size={12} />
-                  <span className="flex-1 text-[11px] truncate" title={file.name}>
-                    {file.name}
-                  </span>
-                </button>
-              );
-            })}
+            {tree.map((node) => (
+              <TreeFileNode
+                key={node.fullPath}
+                node={node}
+                depth={0}
+                activeFile={activeFile}
+                deletingFile={deletingFile}
+                expandedDirs={expandedDirs}
+                onToggleDir={handleToggleDir}
+                onSelectFile={onSelectFile}
+                onContextMenu={handleContextMenu}
+              />
+            ))}
 
             {files.length === 0 && !creating && (
               <div className="px-3 py-2 text-[10px] text-gray-400 italic">
