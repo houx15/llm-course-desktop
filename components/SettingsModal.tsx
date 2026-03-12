@@ -10,17 +10,15 @@ interface SettingsModalProps {
   onUserNameChanged?: (newName: string) => void;
 }
 
-const API_KEY_HELP_URL = 'https://puk4mtafgs.feishu.cn/wiki/Ej7cwWaqsiFaSHkbBgKcr0ldnkg';
-
 const PROVIDERS = [
-  { id: 'gemini',   name: 'Google Gemini',         defaultModel: 'gemini-2.0-flash', llmFormat: 'custom', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', helpUrl: API_KEY_HELP_URL },
-  { id: 'gpt',      name: 'OpenAI GPT',             defaultModel: 'gpt-5-mini',           llmFormat: 'openai', baseUrl: '', helpUrl: API_KEY_HELP_URL },
-  { id: 'claude', name: 'Anthropic Claude', defaultModel: 'claude-haiku-4-5-20251001', llmFormat: 'anthropic', baseUrl: 'https://api.anthropic.com', helpUrl: API_KEY_HELP_URL },
-  { id: 'deepseek', name: 'DeepSeek',               defaultModel: 'deepseek-chat',    llmFormat: 'custom', baseUrl: 'https://api.deepseek.com',                                   helpUrl: API_KEY_HELP_URL },
-  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',        llmFormat: 'custom', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',         helpUrl: API_KEY_HELP_URL },
-  { id: 'glm',      name: 'Zhipu GLM (智谱)',       defaultModel: 'glm-4',            llmFormat: 'custom', baseUrl: 'https://open.bigmodel.cn/api/paas/v4',                       helpUrl: API_KEY_HELP_URL },
-  { id: 'kimi',     name: 'Moonshot Kimi',          defaultModel: 'kimi-k2-0905-preview',   llmFormat: 'custom', baseUrl: 'https://api.moonshot.cn/v1',                                 helpUrl: API_KEY_HELP_URL },
-  { id: 'minimax', name: 'Minimax', defaultModel: 'MiniMax-M2.1-highspeed', llmFormat: 'custom', baseUrl: 'https://api.minimaxi.com/v1', helpUrl: API_KEY_HELP_URL },
+  { id: 'gemini',   name: 'Google Gemini',         defaultModel: 'gemini-2.0-flash', llmFormat: 'custom', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', helpUrl: 'https://ai.google.dev/gemini-api/docs/api-key' },
+  { id: 'gpt',      name: 'OpenAI GPT',             defaultModel: 'gpt-5-mini',           llmFormat: 'openai', baseUrl: '', helpUrl: 'https://platform.openai.com/api-keys' },
+  { id: 'claude', name: 'Anthropic Claude', defaultModel: 'claude-haiku-4-5-20251001', llmFormat: 'anthropic', baseUrl: 'https://api.anthropic.com', helpUrl: 'https://docs.anthropic.com/en/docs/initial-setup#prerequisites' },
+  { id: 'deepseek', name: 'DeepSeek',               defaultModel: 'deepseek-chat',    llmFormat: 'custom', baseUrl: 'https://api.deepseek.com',                                   helpUrl: 'https://platform.deepseek.com/api_keys' },
+  { id: 'qwen',     name: 'Aliyun Qwen (通义千问)', defaultModel: 'qwen-turbo',        llmFormat: 'custom', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',         helpUrl: 'https://help.aliyun.com/zh/model-studio/getting-started/first-api-call-to-qwen' },
+  { id: 'glm',      name: 'Zhipu GLM (智谱)',       defaultModel: 'glm-4',            llmFormat: 'custom', baseUrl: 'https://open.bigmodel.cn/api/paas/v4',                       helpUrl: 'https://open.bigmodel.cn/dev/howuse/introduction' },
+  { id: 'kimi',     name: 'Moonshot Kimi',          defaultModel: 'kimi-k2-0905-preview',   llmFormat: 'custom', baseUrl: 'https://api.moonshot.cn/v1',                                 helpUrl: 'https://platform.moonshot.cn/docs/guide/get-api-key' },
+  { id: 'minimax', name: 'Minimax', defaultModel: 'MiniMax-M2.1-highspeed', llmFormat: 'custom', baseUrl: 'https://api.minimaxi.com/v1', helpUrl: 'https://platform.minimaxi.com/docs/guides/quickstart-preparation' },
 ];
 
 type ProviderConfig = {
