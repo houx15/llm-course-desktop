@@ -257,22 +257,31 @@ const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         // 1. List local files (also triggers curriculum seeding on first access)
         let listed = await codeWorkspace.listFiles(chapterId);
 
-        // 2. Download cloud-synced files (overwrites local copies with cloud versions)
+        // 2. Download cloud-synced files (only if cloud version is newer than local)
         const backendChapterId = chapterId.includes('/') ? chapterId.split('/').pop() || chapterId : chapterId;
         try {
           const { files: cloudFiles } = await listChapterCloudFiles(backendChapterId);
+          const localByName = new Map(listed.map((f) => [f.name, f]));
+          let anyNewFromCloud = false;
           for (const cf of cloudFiles) {
             if (cancelled) return;
             if (!cf.download_url) continue;
+            // Skip if local file exists and is newer than or equal to cloud version
+            const local = localByName.get(cf.filename);
+            if (local && cf.updated_at) {
+              const cloudMs = new Date(cf.updated_at).getTime();
+              if (local.modified >= cloudMs) continue;
+            }
             try {
               const content = await downloadFromUrl(cf.download_url);
               await codeWorkspace.writeFile(chapterId, cf.filename, content);
+              anyNewFromCloud = true;
             } catch {
               // Best-effort: skip files that fail to download
             }
           }
           // Re-list after cloud sync to pick up any new files
-          if (cloudFiles.length > 0) {
+          if (anyNewFromCloud) {
             listed = await codeWorkspace.listFiles(chapterId);
           }
         } catch {
