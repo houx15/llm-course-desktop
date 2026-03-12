@@ -100,7 +100,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [expanded, setExpanded] = useState(false);
   const composingRef = useRef(false);
   const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const sendGenerationRef = useRef(0);
 
   // Persist token usage per turn so it survives re-entry
   // Key: `${sessionId}:${turnIndex}` → { input, output }
@@ -535,8 +534,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
     setMessages((prev) => [...prev, userMsg, { role: 'model', text: '' }]);
     setIsLoading(true);
-    // Bump generation so any residual callbacks from a cancelled stream are ignored
-    const thisGeneration = ++sendGenerationRef.current;
 
     const startTime = Date.now();
     let modelResponseText = '';
@@ -546,9 +543,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
     try {
       await runtimeManager.streamMessage(sessionId, userMsg.text, (event) => {
         onRuntimeEvent?.(event);
-
-        // Ignore callbacks from a stale (cancelled) generation
-        if (sendGenerationRef.current !== thisGeneration) return;
 
         if (event.type === 'companion_chunk') {
           modelResponseText += event.content || '';
@@ -592,9 +586,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
         }
       });
 
-      // If this generation was cancelled, skip post-processing
-      if (sendGenerationRef.current !== thisGeneration) return false;
-
       // Attach token usage totals to the last model message
       const totalInput = Object.values(tokenUsage).reduce((s, v) => s + v.input, 0);
       const totalOutput = Object.values(tokenUsage).reduce((s, v) => s + v.output, 0);
@@ -637,14 +628,10 @@ const CentralChat: React.FC<CentralChatProps> = ({
       if (error instanceof DOMException && error.name === 'AbortError') {
         return false;
       }
-      if (sendGenerationRef.current === thisGeneration) {
-        appendToLatestModelMessage(`抱歉，遇到了一些错误，请重试。\n\n${error instanceof Error ? error.message : ''}`);
-      }
+      appendToLatestModelMessage(`抱歉，遇到了一些错误，请重试。\n\n${error instanceof Error ? error.message : ''}`);
       return false;
     } finally {
-      if (sendGenerationRef.current === thisGeneration) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
   };
 
@@ -700,15 +687,11 @@ const CentralChat: React.FC<CentralChatProps> = ({
   };
 
   const handleStop = () => {
-    // Tell the sidecar to cancel the current turn (it will discard it without
+    // Tell the sidecar to cancel the current turn (discards it without
     // saving to history), then abort the HTTP stream on our side.
     if (sessionId) {
       runtimeManager.cancelMessage(sessionId);
     }
-    // Bump generation so any residual callbacks are ignored
-    sendGenerationRef.current++;
-    pendingStreamRef.current = null;
-    setIsLoading(false);
 
     setMessages((prev) => {
       const next = [...prev];
@@ -723,6 +706,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
       }
       return next;
     });
+    // Note: setIsLoading(false) happens in sendMessage's finally block
+    // when the AbortError is caught
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
