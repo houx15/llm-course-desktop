@@ -64,11 +64,18 @@ export interface Chapter {
   activeSessionId?: string | null;
 }
 
+export interface Part {
+  id: string;  // generated from index, e.g. "part-0", "part-1"
+  title: string;
+  chapterIds: string[];
+}
+
 export interface Phase {
   id: string;
   title: string;
   status: CompletionStatus;
   chapters: Chapter[];
+  parts?: Part[];  // optional grouping layer above chapters
   overview: {
     experience: string;
     gains: string;

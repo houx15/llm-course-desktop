@@ -35,6 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Keep all phases (courses) expanded so chapter list is always visible
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set(phases.map(p => p.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+  const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set());
 
   // Auto-expand newly loaded phases (phases may arrive after initial mount)
   useEffect(() => {
@@ -46,6 +47,28 @@ const Sidebar: React.FC<SidebarProps> = ({
       }
       return changed ? next : prev;
     });
+  }, [phases]);
+
+  // Auto-expand all parts on mount / when phases change
+  useEffect(() => {
+    const allPartIds = new Set<string>();
+    for (const phase of phases) {
+      if (phase.parts) {
+        for (const part of phase.parts) {
+          allPartIds.add(part.id);
+        }
+      }
+    }
+    if (allPartIds.size > 0) {
+      setExpandedParts(prev => {
+        const next = new Set(prev);
+        let changed = false;
+        for (const id of allPartIds) {
+          if (!next.has(id)) { next.add(id); changed = true; }
+        }
+        return changed ? next : prev;
+      });
+    }
   }, [phases]);
 
   // Auto-expand the session list when navigating to a chapter
@@ -82,6 +105,16 @@ const Sidebar: React.FC<SidebarProps> = ({
     setExpandedChapters(newExpanded);
   };
 
+  const togglePartExpand = (partId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedParts(prev => {
+      const next = new Set(prev);
+      if (next.has(partId)) next.delete(partId);
+      else next.add(partId);
+      return next;
+    });
+  };
+
   const renderStatusIcon = (status: string, isActive: boolean) => {
     if (status === 'LOCKED') return <Lock size={12} className="text-gray-400" />;
     if (status === 'COMPLETED') return <CheckCircle2 size={12} className="text-green-500" />;
@@ -91,6 +124,95 @@ const Sidebar: React.FC<SidebarProps> = ({
       return <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />;
     }
     return <div className="w-2 h-2 rounded-full bg-orange-500/50" />;
+  };
+
+  const renderChapterRow = (chapter: Chapter, phase: Phase) => {
+    const isChapterActive = currentChapterId === chapter.id;
+    const isChapterLocked = chapter.status === 'LOCKED';
+    const sessions = chapter.sessions || [];
+    const hasSessions = sessions.length > 0;
+    const isChapterExpanded = expandedChapters.has(chapter.id);
+
+    return (
+      <div key={chapter.id}>
+        {/* Chapter row — single white-background container */}
+        <div
+          className={`group flex items-center border-l-2 transition-all ${
+            isChapterActive
+              ? 'bg-white border-orange-500 shadow-sm'
+              : 'border-transparent hover:bg-gray-100'
+          } ${isChapterLocked ? 'opacity-50' : ''}`}
+        >
+          <button
+            disabled={isChapterLocked}
+            onClick={() => onSelectChapter(chapter, phase)}
+            className={`flex-1 min-w-0 text-left px-4 py-2.5 text-sm flex items-center gap-3 ${
+              isChapterActive
+                ? 'text-gray-900 font-medium'
+                : 'text-gray-600'
+            } ${isChapterLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            <div className="shrink-0 w-4 flex justify-center">
+               {renderStatusIcon(chapter.status, isChapterActive)}
+            </div>
+            <span className="truncate">{chapter.title}</span>
+          </button>
+
+          {/* Session count badge + expand toggle */}
+          {hasSessions && (
+            <button
+              onClick={(e) => toggleChapterExpand(chapter.id, e)}
+              className="shrink-0 px-1.5 py-1 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5"
+              title={`${sessions.length} 次会话`}
+            >
+              <span className="text-[10px] font-medium">{sessions.length}</span>
+              {isChapterExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+            </button>
+          )}
+
+          {/* New session button — always visible when active, hover otherwise */}
+          {!isChapterLocked && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onCreateNewSession(chapter, phase); }}
+              className={`shrink-0 w-6 h-6 mr-1 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all ${
+                isChapterActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
+              title="新建会话"
+            >
+              <Plus size={12} />
+            </button>
+          )}
+        </div>
+
+        {/* Session sub-list */}
+        {isChapterExpanded && hasSessions && (
+          <div className="ml-7 border-l border-gray-200">
+            {sessions.map((session) => (
+              <button
+                key={session.sessionId}
+                onClick={() => onSelectSession(session.sessionId, chapter, phase)}
+                className={`w-full text-left pl-3 pr-2 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+                  currentSessionId === session.sessionId
+                    ? 'text-blue-600 font-medium bg-blue-50/50'
+                    : 'text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  currentSessionId === session.sessionId ? 'bg-blue-500' : 'bg-gray-300'
+                }`} />
+                <span className="truncate">{formatShortDate(session.createdAt)}</span>
+                {session.bundleVersion && (
+                  <span className="shrink-0 text-[10px] text-gray-400">[{session.bundleVersion}]</span>
+                )}
+                {session.turnCount > 0 && (
+                  <span className="shrink-0 text-[10px] text-gray-400">{session.turnCount}轮</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -132,97 +254,37 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </button>
                 </div>
 
-                {/* Chapter List */}
+                {/* Chapter List - with optional parts grouping */}
                 {expandedPhases.has(phase.id) && (
                   <div className="bg-gray-50/50">
-                    {phase.chapters.map(chapter => {
-                      const isChapterActive = currentChapterId === chapter.id;
-                      const isChapterLocked = chapter.status === 'LOCKED';
-                      const sessions = chapter.sessions || [];
-                      const hasSessions = sessions.length > 0;
-                      const isChapterExpanded = expandedChapters.has(chapter.id);
+                    {phase.parts && phase.parts.length > 0 ? (
+                      // Grouped by parts
+                      phase.parts.map(part => {
+                        const partChapters = part.chapterIds
+                          .map(cid => phase.chapters.find(ch => ch.id === cid))
+                          .filter(Boolean) as Chapter[];
+                        const isPartExpanded = expandedParts.has(part.id);
 
-                      return (
-                        <div key={chapter.id}>
-                          {/* Chapter row — single white-background container */}
-                          <div
-                            className={`group flex items-center border-l-2 transition-all ${
-                              isChapterActive
-                                ? 'bg-white border-orange-500 shadow-sm'
-                                : 'border-transparent hover:bg-gray-100'
-                            } ${isChapterLocked ? 'opacity-50' : ''}`}
-                          >
+                        return (
+                          <div key={part.id}>
+                            {/* Part header */}
                             <button
-                              disabled={isChapterLocked}
-                              onClick={() => onSelectChapter(chapter, phase)}
-                              className={`flex-1 min-w-0 text-left px-4 py-2.5 text-sm flex items-center gap-3 ${
-                                isChapterActive
-                                  ? 'text-gray-900 font-medium'
-                                  : 'text-gray-600'
-                              } ${isChapterLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                              onClick={(e) => togglePartExpand(part.id, e)}
+                              className="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:bg-gray-100 transition-colors"
                             >
-                              <div className="shrink-0 w-4 flex justify-center">
-                                 {renderStatusIcon(chapter.status, isChapterActive)}
-                              </div>
-                              <span className="truncate">{chapter.title}</span>
+                              {isPartExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                              <span className="truncate">{part.title}</span>
+                              <span className="text-[10px] text-gray-400 font-normal normal-case">{partChapters.length}章</span>
                             </button>
-
-                            {/* Session count badge + expand toggle */}
-                            {hasSessions && (
-                              <button
-                                onClick={(e) => toggleChapterExpand(chapter.id, e)}
-                                className="shrink-0 px-1.5 py-1 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5"
-                                title={`${sessions.length} 次会话`}
-                              >
-                                <span className="text-[10px] font-medium">{sessions.length}</span>
-                                {isChapterExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                              </button>
-                            )}
-
-                            {/* New session button — always visible when active, hover otherwise */}
-                            {!isChapterLocked && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); onCreateNewSession(chapter, phase); }}
-                                className={`shrink-0 w-6 h-6 mr-1 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-all ${
-                                  isChapterActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                                }`}
-                                title="新建会话"
-                              >
-                                <Plus size={12} />
-                              </button>
-                            )}
+                            {/* Part's chapters */}
+                            {isPartExpanded && partChapters.map(chapter => renderChapterRow(chapter, phase))}
                           </div>
-
-                          {/* Session sub-list */}
-                          {isChapterExpanded && hasSessions && (
-                            <div className="ml-7 border-l border-gray-200">
-                              {sessions.map((session) => (
-                                <button
-                                  key={session.sessionId}
-                                  onClick={() => onSelectSession(session.sessionId, chapter, phase)}
-                                  className={`w-full text-left pl-3 pr-2 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                                    currentSessionId === session.sessionId
-                                      ? 'text-blue-600 font-medium bg-blue-50/50'
-                                      : 'text-gray-500 hover:bg-gray-100'
-                                  }`}
-                                >
-                                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                    currentSessionId === session.sessionId ? 'bg-blue-500' : 'bg-gray-300'
-                                  }`} />
-                                  <span className="truncate">{formatShortDate(session.createdAt)}</span>
-                                  {session.bundleVersion && (
-                                    <span className="shrink-0 text-[10px] text-gray-400">[{session.bundleVersion}]</span>
-                                  )}
-                                  {session.turnCount > 0 && (
-                                    <span className="shrink-0 text-[10px] text-gray-400">{session.turnCount}轮</span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    ) : (
+                      // Flat list (no parts)
+                      phase.chapters.map(chapter => renderChapterRow(chapter, phase))
+                    )}
                   </div>
                 )}
               </div>

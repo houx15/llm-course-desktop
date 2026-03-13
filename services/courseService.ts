@@ -36,6 +36,11 @@ interface BackendChapter {
   bundle_size_bytes?: number;
 }
 
+interface BackendPart {
+  title: string;
+  chapter_ids: string[];
+}
+
 const defaultRoadmap = {
   currentTask: '',
   nextAdvice: '',
@@ -90,8 +95,23 @@ export const courseService = {
     return response.chapters;
   },
 
+  async listChaptersWithParts(courseId: string): Promise<{ chapters: BackendChapter[]; parts?: BackendPart[] }> {
+    const response = await backendClient.get<{ course_id: string; chapters: BackendChapter[]; parts?: BackendPart[] }>(
+      `/v1/courses/${courseId}/chapters`,
+      true
+    );
+    return { chapters: response.chapters, parts: response.parts || undefined };
+  },
+
   async getCoursePhases(courseId: string): Promise<Phase[]> {
-    const [course, chapters] = await Promise.all([this.getCourse(courseId), this.listChapters(courseId)]);
+    const [course, { chapters, parts: backendParts }] = await Promise.all([
+      this.getCourse(courseId),
+      this.listChaptersWithParts(courseId),
+    ]);
+
+    const mappedParts = backendParts?.length
+      ? backendParts.map((p, i) => ({ id: `part-${i}`, title: p.title, chapterIds: p.chapter_ids }))
+      : undefined;
 
     return [
       {
@@ -105,6 +125,7 @@ export const courseService = {
           journey: course.overview?.journey || '',
         },
         chapters: chapters.sort((a, b) => a.order - b.order).map((chapter) => mapChapter(chapter)),
+        parts: mappedParts,
       },
     ];
   },
