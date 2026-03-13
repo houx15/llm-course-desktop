@@ -49,27 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     });
   }, [phases]);
 
-  // Auto-expand all parts on mount / when phases change
-  useEffect(() => {
-    const allPartIds = new Set<string>();
-    for (const phase of phases) {
-      if (phase.parts) {
-        for (const part of phase.parts) {
-          allPartIds.add(part.id);
-        }
-      }
-    }
-    if (allPartIds.size > 0) {
-      setExpandedParts(prev => {
-        const next = new Set(prev);
-        let changed = false;
-        for (const id of allPartIds) {
-          if (!next.has(id)) { next.add(id); changed = true; }
-        }
-        return changed ? next : prev;
-      });
-    }
-  }, [phases]);
+  // Parts default to collapsed — no auto-expand
 
   // Auto-expand the session list when navigating to a chapter
   useEffect(() => {
@@ -259,7 +239,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <div className="bg-gray-50/50">
                     {phase.parts && phase.parts.length > 0 ? (
                       // Grouped by parts
-                      phase.parts.map(part => {
+                      phase.parts.map((part, partIndex) => {
                         const partChapters = part.chapterIds
                           .map(cid => phase.chapters.find(ch => ch.id === cid))
                           .filter(Boolean) as Chapter[];
@@ -273,8 +253,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                               className="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:bg-gray-100 transition-colors"
                             >
                               {isPartExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                              <span className="truncate">{part.title}</span>
-                              <span className="text-[10px] text-gray-400 font-normal normal-case">{partChapters.length}章</span>
+                              <span className="truncate">{partIndex + 1}. {part.title}</span>
                             </button>
                             {/* Part's chapters */}
                             {isPartExpanded && partChapters.map(chapter => renderChapterRow(chapter, phase))}

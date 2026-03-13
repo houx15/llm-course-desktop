@@ -687,7 +687,9 @@ const refreshAccessTokenIfNeeded = async (settings, auth) => {
     });
 
     if (!refreshResponse.ok) {
-      throw new Error('Refresh token request failed');
+      const err = new Error('Refresh token request failed');
+      err.status = refreshResponse.status;
+      throw err;
     }
 
     const accessToken = String(refreshResponse?.data?.access_token || '');
@@ -713,13 +715,26 @@ const refreshAccessTokenIfNeeded = async (settings, auth) => {
 
 const requestBackend = async (payload = {}) => {
   const settings = await loadSettings();
-  const auth = await loadAuthStore();
+  let auth = await loadAuthStore();
 
   const method = String(payload.method || 'GET').toUpperCase();
   const url = normalizeUrl(BACKEND_BASE_URL, payload.path || payload.url);
   const headers = {
     ...(payload.headers || {}),
   };
+
+  // Proactive token refresh: if token expires within 5 minutes, refresh before the request
+  if (payload.withAuth !== false && auth.refreshToken && auth.accessTokenExpiresAt) {
+    const fiveMinutes = 5 * 60 * 1000;
+    if (auth.accessTokenExpiresAt - Date.now() < fiveMinutes) {
+      try {
+        const refreshed = await refreshAccessTokenIfNeeded(settings, auth);
+        if (refreshed?.accessToken) {
+          auth = refreshed;
+        }
+      } catch { /* will retry reactively on 401 */ }
+    }
+  }
 
   if (payload.withAuth !== false && auth.accessToken) {
     headers.Authorization = `Bearer ${auth.accessToken}`;
@@ -767,8 +782,13 @@ const requestBackend = async (payload = {}) => {
       Authorization: refreshedAuth?.accessToken ? `Bearer ${refreshedAuth.accessToken}` : headers.Authorization,
     };
     return executeBackendFetch({ url, method, headers: retryHeaders, body });
-  } catch {
-    await clearAuthStore().catch(() => {});
+  } catch (refreshErr) {
+    // Only clear auth if the refresh token was definitively rejected by the server (4xx).
+    // Network errors / timeouts should NOT wipe credentials — the user can retry later.
+    const isServerRejection = refreshErr?.status >= 400 && refreshErr?.status < 500;
+    if (isServerRejection) {
+      await clearAuthStore().catch(() => {});
+    }
     return firstAttempt;
   }
 };
