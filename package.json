@@ -3,7 +3,7 @@
   "productName": "Knoweia",
   "description": "Knoweia desktop app for AI-powered tutoring and course learning.",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "main": "electron/main.mjs",
   "type": "module",
   "scripts": {
