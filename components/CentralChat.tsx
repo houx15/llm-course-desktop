@@ -888,14 +888,17 @@ const CentralChat: React.FC<CentralChatProps> = ({
     <div className="flex flex-col h-full bg-white relative">
       <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
         {(() => {
-          const visibleMessages = messages.filter(msg => !(msg.role === 'model' && /^\[系统[：:]/.test(msg.text)));
+          const visibleMessages = messages.filter(msg =>
+            !(msg.role === 'model' && /^\[系统[：:]/.test(msg.text)) &&
+            !(msg.role === 'user' && msg.text === '[TASK_SKIPPED]')
+          );
           const lastMsg = visibleMessages[visibleMessages.length - 1];
-          const lastIsBotResponse = lastMsg?.role === 'model' && !isLoading;
+          const lastIsBotResponse = lastMsg?.role === 'model' && lastMsg.text.trim() !== '' && !isLoading;
 
           return visibleMessages.map((msg, idx) => {
             const hasCodeBlock = msg.role === 'model' && msg.text.includes('```');
             const isLastBotMsg = lastIsBotResponse && msg.role === 'model' && idx === visibleMessages.length - 1;
-            const showSkipBtn = isLastBotMsg && hasRemainingTasks && sessionId && !isSkipping;
+            const showSkipBtn = isLastBotMsg && hasRemainingTasks && sessionId && !isSkipping && !isLoading;
             const hasActionBar = (hasCodeBlock && onStartCoding) || showSkipBtn;
 
             return (
