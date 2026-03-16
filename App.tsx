@@ -197,7 +197,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTaskSkipped = (result: SkipTaskResult) => {
+  const handleTaskSkipped = (result: SkipTaskResult, reason?: string, reasonText?: string) => {
     setHasRemainingTasks(!result.allTasksDone);
     if (currentChapter && activeCourseId) {
       const chapterId = currentChapter.id.includes('/') ? currentChapter.id.split('/').pop() || currentChapter.id : currentChapter.id;
@@ -212,6 +212,10 @@ const App: React.FC = () => {
           next_task_id: result.nextTaskId,
           consecutive_skips: result.consecutiveSkips,
           all_tasks_done: result.allTasksDone,
+          subtask_id: result.skippedTaskId,
+          reason: reason || null,
+          reason_text: reasonText || null,
+          consecutive_skip_number: result.consecutiveSkips,
         },
       }).catch(() => {});
     }

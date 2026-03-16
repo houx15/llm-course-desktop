@@ -29,7 +29,7 @@ interface CentralChatProps {
   injectedInput?: ChatInputInjection | null;
   onInjectedHandled?: (injectionId: number) => void;
   hasRemainingTasks?: boolean;
-  onTaskSkipped?: (result: SkipTaskResult) => void;
+  onTaskSkipped?: (result: SkipTaskResult, reason?: string, reasonText?: string) => void;
 }
 
 const MAX_CHARS = 5000;
@@ -703,7 +703,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   };
 
   const handleSkipTask = async () => {
-    if (!sessionId || isSkipping || isLoading) return;
+    if (!sessionId || isSkipping || isLoading || showSkipReasonModal) return;
     setIsSkipping(true);
     try {
       const result = await runtimeManager.skipTask(sessionId);
@@ -728,7 +728,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
     try {
       const result = await runtimeManager.skipTask(sessionId, reason, reasonText);
       setPendingSkipTaskId(null);
-      onTaskSkipped?.(result);
+      onTaskSkipped?.(result, reason, reasonText);
       await sendMessage('[TASK_SKIPPED]');
     } catch (err) {
       console.warn('[CentralChat] skipTask with reason failed:', err);
@@ -1003,7 +1003,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
             </div>
           )}
           {hasRemainingTasks && sessionId && (
-            <div className="flex justify-end mt-1 pr-1">
+            <div className="flex justify-start mt-1 pr-1">
               <button
                 onClick={handleSkipTask}
                 disabled={isSkipping || isLoading}
