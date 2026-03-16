@@ -8,7 +8,7 @@ export interface ContentBlock {
   output?: string;
 }
 
-export type CompletionStatus = 'LOCKED' | 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+export type CompletionStatus = 'LOCKED' | 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
 
 export interface Checkpoint {
   id: string;

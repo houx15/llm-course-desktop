@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Chapter, Checkpoint } from '../types';
-import { CheckCircle2, Lock, CircleDot, ChevronDown, Target, Clock, User, Lightbulb, BookOpen } from 'lucide-react';
+import { CheckCircle2, Lock, CircleDot, ChevronDown, Target, Clock, User, Lightbulb, BookOpen, SkipForward } from 'lucide-react';
 
 interface RoadmapPanelProps {
   chapter: Chapter;
@@ -132,6 +132,10 @@ const RoadmapPanel: React.FC<RoadmapPanelProps> = ({
       Icon = Lock;
       colorClass = 'text-gray-400 bg-gray-100 border-gray-200';
       textClass = 'text-gray-400';
+    } else if (item.status === 'SKIPPED') {
+      Icon = SkipForward;
+      colorClass = 'text-gray-400 bg-gray-100 border-gray-200';
+      textClass = 'text-gray-400 line-through decoration-gray-300';
     }
 
     return (
@@ -141,7 +145,12 @@ const RoadmapPanel: React.FC<RoadmapPanelProps> = ({
             <Icon size={10} strokeWidth={3} />
           </div>
           <div className="pt-0.5">
-            <div className={`text-sm leading-none mb-1 ${textClass}`}>{item.title}</div>
+            <div className={`text-sm leading-none mb-1 ${textClass}`}>
+              {item.title}
+              {item.status === 'SKIPPED' && (
+                <span className="ml-1.5 text-[10px] font-medium text-gray-400 bg-gray-100 px-1 py-0.5 rounded inline-block align-middle not-italic" style={{ textDecoration: 'none' }}>已跳过</span>
+              )}
+            </div>
             {item.status === 'IN_PROGRESS' && item.description && !item.subItems && (
               <div className="text-xs text-orange-600/80 mt-1 font-mono bg-orange-50 px-1.5 py-0.5 rounded inline-block">
                 {item.description}
