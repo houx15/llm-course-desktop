@@ -15,7 +15,7 @@ import { updateManager } from './services/updateManager';
 import { runtimeManager, NormalizedStreamEvent } from './services/runtimeManager';
 import { syncQueue } from './services/syncQueue';
 import { codeWorkspace } from './services/codeWorkspace';
-import { Phase, Chapter, CourseSummary, User, SessionSummary } from './types';
+import { Phase, Chapter, CourseSummary, User, SessionSummary, SkipTaskResult } from './types';
 import { fetchChapterSessions } from './services/backendClient';
 import SidecarDownloadProgress from './components/SidecarDownloadProgress';
 import BugReportModal from './components/BugReportModal';
@@ -72,6 +72,7 @@ const App: React.FC = () => {
   const [chapterUpdateModal, setChapterUpdateModal] = useState<{
     resolve: (choice: 'new' | 'resume') => void;
   } | null>(null);
+  const [hasRemainingTasks, setHasRemainingTasks] = useState(true);
 
   const parseReportLines = (report: string) =>
     report
@@ -193,6 +194,26 @@ const App: React.FC = () => {
           memoUpdating: false,
         },
       }));
+    }
+  };
+
+  const handleTaskSkipped = (result: SkipTaskResult) => {
+    setHasRemainingTasks(!result.allTasksDone);
+    if (currentChapter && activeCourseId) {
+      const chapterId = currentChapter.id.includes('/') ? currentChapter.id.split('/').pop() || currentChapter.id : currentChapter.id;
+      syncQueue.enqueueAnalytics({
+        event_type: 'task_skipped',
+        event_time: new Date().toISOString(),
+        course_id: activeCourseId,
+        chapter_id: chapterId,
+        payload: {
+          skipped_task_id: result.skippedTaskId,
+          skipped_task_title: result.skippedTaskTitle,
+          next_task_id: result.nextTaskId,
+          consecutive_skips: result.consecutiveSkips,
+          all_tasks_done: result.allTasksDone,
+        },
+      }).catch(() => {});
     }
   };
 
@@ -582,6 +603,7 @@ const App: React.FC = () => {
     }
 
     // Set all state together — batched in one render
+    setHasRemainingTasks(true);
     setCurrentPhase(phase);
     setCurrentChapter(chapter);
     setChapterRuntimeState((prev) => ({
@@ -920,6 +942,8 @@ const App: React.FC = () => {
                           return { ...prev, [currentChapter.id]: null };
                         });
                       }}
+                      hasRemainingTasks={hasRemainingTasks}
+                      onTaskSkipped={handleTaskSkipped}
                     />
                   </div>
                 );
