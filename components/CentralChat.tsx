@@ -905,7 +905,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
                       msg.role === 'user' ? 'bg-gray-100 text-gray-900 rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none shadow-md'
                     }`}
                   >
-                    <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent prose-pre:max-w-full prose-ul:my-2 prose-li:my-0.5" style={{ overflowWrap: 'anywhere' }}>
+                    <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent prose-pre:max-w-full prose-ul:my-2 prose-li:my-0.5 prose-h1:text-lg prose-h1:mt-4 prose-h1:mb-2 prose-h2:text-base prose-h2:mt-3 prose-h2:mb-1.5 prose-h3:text-sm prose-h3:mt-2 prose-h3:mb-1" style={{ overflowWrap: 'anywhere' }}>
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={markdownComponents}
