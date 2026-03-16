@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Message, Chapter } from '../types';
+import { Message, Chapter, SkipReason, SkipTaskResult } from '../types';
 import { runtimeManager, NormalizedStreamEvent } from '../services/runtimeManager';
+import SkipReasonModal from './SkipReasonModal';
 import { syncQueue } from '../services/syncQueue';
 import { fetchSessionState, fetchSessionStateById, listWorkspaceSubmittedFiles } from '../services/backendClient';
 import { codeWorkspace } from '../services/codeWorkspace';
@@ -27,6 +28,8 @@ interface CentralChatProps {
   onOpenInEditor?: (payload: { code: string; language?: string }) => void;
   injectedInput?: ChatInputInjection | null;
   onInjectedHandled?: (injectionId: number) => void;
+  hasRemainingTasks?: boolean;
+  onTaskSkipped?: (result: SkipTaskResult) => void;
 }
 
 const MAX_CHARS = 5000;
@@ -83,6 +86,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
   onOpenInEditor,
   injectedInput,
   onInjectedHandled,
+  hasRemainingTasks = true,
+  onTaskSkipped,
 }) => {
   const chapterId = chapter.id.includes('/') ? chapter.id.split('/').pop()! : chapter.id;
   const [messages, setMessages] = useState<Message[]>([]);
@@ -96,6 +101,9 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
+  const [isSkipping, setIsSkipping] = useState(false);
+  const [showSkipReasonModal, setShowSkipReasonModal] = useState(false);
+  const [pendingSkipTaskId, setPendingSkipTaskId] = useState<string | null>(null);
   const handledInjectionIdRef = useRef<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const composingRef = useRef(false);
@@ -694,6 +702,47 @@ const CentralChat: React.FC<CentralChatProps> = ({
     }
   };
 
+  const handleSkipTask = async () => {
+    if (!sessionId || isSkipping || isLoading) return;
+    setIsSkipping(true);
+    try {
+      const result = await runtimeManager.skipTask(sessionId);
+      if (result.needsReason) {
+        setPendingSkipTaskId(result.skippedTaskId);
+        setShowSkipReasonModal(true);
+        return;
+      }
+      onTaskSkipped?.(result);
+      await sendMessage('[TASK_SKIPPED]');
+    } catch (err) {
+      console.warn('[CentralChat] skipTask failed:', err);
+    } finally {
+      setIsSkipping(false);
+    }
+  };
+
+  const handleSkipReasonConfirm = async (reason: SkipReason, reasonText?: string) => {
+    setShowSkipReasonModal(false);
+    if (!sessionId || !pendingSkipTaskId) return;
+    setIsSkipping(true);
+    try {
+      const result = await runtimeManager.skipTask(sessionId, reason, reasonText);
+      setPendingSkipTaskId(null);
+      onTaskSkipped?.(result);
+      await sendMessage('[TASK_SKIPPED]');
+    } catch (err) {
+      console.warn('[CentralChat] skipTask with reason failed:', err);
+    } finally {
+      setIsSkipping(false);
+    }
+  };
+
+  const handleSkipReasonCancel = () => {
+    setShowSkipReasonModal(false);
+    setPendingSkipTaskId(null);
+    setIsSkipping(false);
+  };
+
   const handleStop = () => {
     // Tell the sidecar to cancel the current turn (discards it without
     // saving to history), then abort the HTTP stream on our side.
@@ -953,8 +1002,25 @@ const CentralChat: React.FC<CentralChatProps> = ({
               <span className={`text-xs ${charColorClass}`}>{charCount}/{MAX_CHARS}</span>
             </div>
           )}
+          {hasRemainingTasks && sessionId && (
+            <div className="flex justify-end mt-1 pr-1">
+              <button
+                onClick={handleSkipTask}
+                disabled={isSkipping || isLoading}
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isSkipping ? '跳过中...' : '跳过当前任务 →'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      <SkipReasonModal
+        isOpen={showSkipReasonModal}
+        onConfirm={handleSkipReasonConfirm}
+        onCancel={handleSkipReasonCancel}
+      />
 
       {/* Expanded editor overlay */}
       {expanded && (
