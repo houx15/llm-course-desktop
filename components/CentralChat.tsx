@@ -878,58 +878,79 @@ const CentralChat: React.FC<CentralChatProps> = ({
   return (
     <div className="flex flex-col h-full bg-white relative">
       <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
-        {messages.filter(msg => !(msg.role === 'model' && /^\[系统[：:]/.test(msg.text))).map((msg, idx) => {
-          const hasCodeBlock = msg.role === 'model' && msg.text.includes('```');
+        {(() => {
+          const visibleMessages = messages.filter(msg => !(msg.role === 'model' && /^\[系统[：:]/.test(msg.text)));
+          const lastMsg = visibleMessages[visibleMessages.length - 1];
+          const lastIsBotResponse = lastMsg?.role === 'model' && !isLoading;
 
-          return (
-            <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm border ${
-                  msg.role === 'user' ? 'bg-gray-900 text-white border-gray-800' : 'bg-white text-blue-600 border-gray-200'
-                }`}
-              >
-                {msg.role === 'user' ? <User size={18} /> : <Bot size={20} />}
-              </div>
+          return visibleMessages.map((msg, idx) => {
+            const hasCodeBlock = msg.role === 'model' && msg.text.includes('```');
+            const isLastBotMsg = lastIsBotResponse && msg.role === 'model' && idx === visibleMessages.length - 1;
+            const showSkipBtn = isLastBotMsg && hasRemainingTasks && sessionId && !isSkipping;
+            const hasActionBar = (hasCodeBlock && onStartCoding) || showSkipBtn;
 
-              <div className={`flex flex-col min-w-0 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+            return (
+              <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div
-                  className={`p-4 sm:p-5 rounded-2xl shadow-sm min-w-0 max-w-full ${
-                    msg.role === 'user' ? 'bg-gray-100 text-gray-900 rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none shadow-md'
+                  className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm border ${
+                    msg.role === 'user' ? 'bg-gray-900 text-white border-gray-800' : 'bg-white text-blue-600 border-gray-200'
                   }`}
                 >
-                  <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent prose-pre:max-w-full prose-ul:my-2 prose-li:my-0.5" style={{ overflowWrap: 'anywhere' }}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={markdownComponents}
-                    >
-                      {msg.text}
-                    </ReactMarkdown>
-                  </div>
+                  {msg.role === 'user' ? <User size={18} /> : <Bot size={20} />}
+                </div>
 
-                  {hasCodeBlock && onStartCoding && (
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <button
-                        onClick={onStartCoding}
-                        className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                <div className={`flex flex-col min-w-0 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div
+                    className={`p-4 sm:p-5 rounded-2xl shadow-sm min-w-0 max-w-full ${
+                      msg.role === 'user' ? 'bg-gray-100 text-gray-900 rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none shadow-md'
+                    }`}
+                  >
+                    <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent prose-pre:max-w-full prose-ul:my-2 prose-li:my-0.5" style={{ overflowWrap: 'anywhere' }}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={markdownComponents}
                       >
-                        <Terminal size={13} />
-                        打开代码编辑器
-                      </button>
+                        {msg.text}
+                      </ReactMarkdown>
                     </div>
+
+                    {hasActionBar && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+                        {hasCodeBlock && onStartCoding && (
+                          <button
+                            onClick={onStartCoding}
+                            className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            <Terminal size={13} />
+                            打开代码编辑器
+                          </button>
+                        )}
+                        {showSkipBtn && (
+                          <button
+                            onClick={handleSkipTask}
+                            className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="跳过当前任务"
+                          >
+                            <SkipForward size={13} />
+                            跳过当前任务
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {msg.role === 'model' && msg.interrupted && (
+                    <span className="text-[10px] text-red-400 mt-1 px-1">（已中断）</span>
+                  )}
+                  {msg.role === 'model' && msg.tokenUsage && (
+                    <span className="text-[10px] text-gray-400 mt-1 px-1">
+                      Token Usage: {msg.tokenUsage.input} in / {msg.tokenUsage.output} out
+                    </span>
                   )}
                 </div>
-                {msg.role === 'model' && msg.interrupted && (
-                  <span className="text-[10px] text-red-400 mt-1 px-1">（已中断）</span>
-                )}
-                {msg.role === 'model' && msg.tokenUsage && (
-                  <span className="text-[10px] text-gray-400 mt-1 px-1">
-                    Token Usage: {msg.tokenUsage.input} in / {msg.tokenUsage.output} out
-                  </span>
-                )}
               </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
         {isLoading && !(messages.length > 0 && messages[messages.length - 1]?.role === 'model' && messages[messages.length - 1]?.text) && (
           <div className="flex gap-4">
             <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm">
@@ -977,16 +998,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
                 >
                   <Maximize2 size={14} />
                 </button>
-                {hasRemainingTasks && sessionId && !isLoading && (
-                  <button
-                    onClick={handleSkipTask}
-                    disabled={isSkipping}
-                    className="p-1.5 text-gray-300 hover:text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="跳过当前任务"
-                  >
-                    <SkipForward size={14} />
-                  </button>
-                )}
                 {isLoading ? (
                   <button
                     onClick={handleStop}
