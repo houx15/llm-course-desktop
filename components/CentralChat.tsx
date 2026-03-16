@@ -325,7 +325,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
     setSessionStarted(true);
   };
 
-  // Helper: create a brand-new session
+  // Helper: create a brand-new session, then stream the CA greeting in real-time
   const createNewSession = async (cancelled: () => boolean) => {
     const stopProgress = startInitProgress('creating');
     try {
@@ -338,15 +338,35 @@ const CentralChat: React.FC<CentralChatProps> = ({
       });
       if (cancelled()) return;
       setInitProgress(100);
-      await new Promise((r) => setTimeout(r, 250));
-      setSessionId(created.sessionId);
-      onSessionIdChange?.(created.sessionId);
-      setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
+
+      const newSid = created.sessionId;
+      setSessionId(newSid);
+      onSessionIdChange?.(newSid);
+      // Start with an empty model message; the greeting will stream in
+      setMessages([{ role: 'model', text: '' }]);
       setSessionStarted(true);
+      setIsLoading(true);
+
+      // Stream the CA greeting via the normal message endpoint
+      await runtimeManager.streamMessage(
+        newSid,
+        '[系统：这是会话的开始，请向学习者打招呼并介绍任务]',
+        (event) => {
+          onRuntimeEvent?.(event);
+          if (event.type === 'companion_chunk') {
+            appendToLatestModelMessage(event.content || '');
+          }
+          if (event.type === 'error') {
+            appendToLatestModelMessage(`\n\n[错误] ${event.message}`);
+          }
+        },
+      );
+      setIsLoading(false);
     } catch (createErr) {
       if (cancelled()) return;
       console.warn('[CentralChat] Create session failed:', createErr);
       setSessionStarted(false);
+      setIsLoading(false);
     } finally {
       stopProgress();
     }
@@ -492,7 +512,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
         console.warn('[CentralChat] handleStartChapter: existing session check failed, will create new:', err);
       }
 
-      // No existing session — create new
+      // No existing session — create new with streamed greeting
       const stopProgress = startInitProgress('creating');
       try {
         const bundleVersion = await getLatestBundleVersion();
@@ -504,11 +524,27 @@ const CentralChat: React.FC<CentralChatProps> = ({
         });
         stopProgress();
         setInitProgress(100);
-        await new Promise((r) => setTimeout(r, 300));
-        setSessionId(created.sessionId);
-        onSessionIdChange?.(created.sessionId);
-        setMessages([{ role: 'model', text: created.initialMessage || chapter.initialMessage }]);
+
+        const newSid = created.sessionId;
+        setSessionId(newSid);
+        onSessionIdChange?.(newSid);
+        setMessages([{ role: 'model', text: '' }]);
         setSessionStarted(true);
+
+        // Stream the CA greeting in real-time
+        await runtimeManager.streamMessage(
+          newSid,
+          '[系统：这是会话的开始，请向学习者打招呼并介绍任务]',
+          (event) => {
+            onRuntimeEvent?.(event);
+            if (event.type === 'companion_chunk') {
+              appendToLatestModelMessage(event.content || '');
+            }
+            if (event.type === 'error') {
+              appendToLatestModelMessage(`\n\n[错误] ${event.message}`);
+            }
+          },
+        );
       } catch (error) {
         stopProgress();
         throw error;
