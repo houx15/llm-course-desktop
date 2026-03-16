@@ -5,7 +5,7 @@ import SkipReasonModal from './SkipReasonModal';
 import { syncQueue } from '../services/syncQueue';
 import { fetchSessionState, fetchSessionStateById, listWorkspaceSubmittedFiles } from '../services/backendClient';
 import { codeWorkspace } from '../services/codeWorkspace';
-import { Bot, User, SendHorizontal, Loader2, Terminal, Maximize2, Minimize2, Copy, Check, Square } from 'lucide-react';
+import { Bot, User, SendHorizontal, Loader2, Terminal, Maximize2, Minimize2, Copy, Check, Square, SkipForward } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -977,6 +977,16 @@ const CentralChat: React.FC<CentralChatProps> = ({
                 >
                   <Maximize2 size={14} />
                 </button>
+                {hasRemainingTasks && sessionId && !isLoading && (
+                  <button
+                    onClick={handleSkipTask}
+                    disabled={isSkipping}
+                    className="p-1.5 text-gray-300 hover:text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="跳过当前任务"
+                  >
+                    <SkipForward size={14} />
+                  </button>
+                )}
                 {isLoading ? (
                   <button
                     onClick={handleStop}
@@ -1000,17 +1010,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
           {charCount > 0 && (
             <div className="flex justify-end mt-1 pr-1">
               <span className={`text-xs ${charColorClass}`}>{charCount}/{MAX_CHARS}</span>
-            </div>
-          )}
-          {hasRemainingTasks && sessionId && (
-            <div className="flex justify-start mt-1 pr-1">
-              <button
-                onClick={handleSkipTask}
-                disabled={isSkipping || isLoading}
-                className="text-xs text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isSkipping ? '跳过中...' : '跳过当前任务 →'}
-              </button>
             </div>
           )}
         </div>
