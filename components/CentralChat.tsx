@@ -104,6 +104,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
   const [isSkipping, setIsSkipping] = useState(false);
   const [showSkipReasonModal, setShowSkipReasonModal] = useState(false);
   const [pendingSkipTaskId, setPendingSkipTaskId] = useState<string | null>(null);
+  const skipReasonAskedRef = useRef(false); // only show reason modal once per session
   const handledInjectionIdRef = useRef<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const composingRef = useRef(false);
@@ -245,6 +246,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
     if (cancelled()) return;
 
     setSessionId(targetSessionId);
+    skipReasonAskedRef.current = false;
     const msgs = turnsToMessages(turns, targetSessionId);
     // Always prepend the initial bot greeting — it's not part of any turn
     setMessages([{ role: 'model', text: chapter.initialMessage }, ...msgs]);
@@ -309,6 +311,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
     setInitProgress(100);
     await new Promise((r) => setTimeout(r, 250));
     setSessionId(targetSessionId);
+    skipReasonAskedRef.current = false;
     const sourceTurns = sidecarTurns.length > 0 ? sidecarTurns : recoveredTurns.map((t) => ({
       user_message: t.user_message,
       companion_response: t.companion_response,
@@ -706,11 +709,17 @@ const CentralChat: React.FC<CentralChatProps> = ({
     if (!sessionId || isSkipping || isLoading || showSkipReasonModal) return;
     setIsSkipping(true);
     try {
-      const result = await runtimeManager.skipTask(sessionId);
+      let result = await runtimeManager.skipTask(sessionId);
       if (result.needsReason) {
-        setPendingSkipTaskId(result.skippedTaskId);
-        setShowSkipReasonModal(true);
-        return;
+        if (!skipReasonAskedRef.current) {
+          // First time: show modal to collect reason
+          skipReasonAskedRef.current = true;
+          setPendingSkipTaskId(result.skippedTaskId);
+          setShowSkipReasonModal(true);
+          return;
+        }
+        // Already asked once this session: skip without reason modal
+        result = await runtimeManager.skipTask(sessionId, '已掌握' as SkipReason);
       }
       onTaskSkipped?.(result);
       await sendMessage('[TASK_SKIPPED]');
