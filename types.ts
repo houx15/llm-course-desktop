@@ -42,6 +42,19 @@ export interface SessionSummary {
   bundleVersion?: string;
 }
 
+export interface SkipTaskResult {
+  skippedTaskId: string;
+  skippedTaskTitle: string;
+  nextTaskId: string | null;
+  nextTaskFocus: string | null;
+  needsReason: boolean;
+  consecutiveSkips: number;
+  allTasksDone: boolean;
+  subtaskStatus: Record<string, { status: string; evidence: string[] }>;
+}
+
+export type SkipReason = '已掌握' | '不感兴趣' | '太难了' | '太啰嗦' | '其他';
+
 export interface Chapter {
   id: string;
   title: string;

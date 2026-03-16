@@ -1,3 +1,5 @@
+import { SkipTaskResult } from '../types';
+
 interface RuntimeConfig {
   pythonPath?: string;
   llmProvider: 'anthropic' | 'openai' | 'custom';
@@ -510,5 +512,38 @@ export const runtimeManager = {
       throw new Error(`End session failed (${response.status})`);
     }
     return response.json();
+  },
+
+  async skipTask(
+    sessionId: string,
+    reason?: string,
+    reasonText?: string,
+    subtaskId?: string,
+  ): Promise<SkipTaskResult> {
+    const baseUrl = normalizeBaseUrl(SIDECAR_BASE_URL);
+    const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}/skip-task`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: reason || null,
+        reason_text: reasonText || null,
+        subtask_id: subtaskId || null,
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Skip failed' }));
+      throw new Error(err.detail || `Skip failed: ${response.status}`);
+    }
+    const data = await response.json();
+    return {
+      skippedTaskId: data.skipped_task_id,
+      skippedTaskTitle: data.skipped_task_title,
+      nextTaskId: data.next_task_id,
+      nextTaskFocus: data.next_task_focus,
+      needsReason: data.needs_reason,
+      consecutiveSkips: data.consecutive_skips,
+      allTasksDone: data.all_tasks_done,
+      subtaskStatus: data.subtask_status,
+    };
   },
 };
