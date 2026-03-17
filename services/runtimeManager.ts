@@ -396,8 +396,9 @@ export const runtimeManager = {
       const reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
+      let streamDone = false;
 
-      while (true) {
+      while (!streamDone) {
         const { done, value } = await reader.read();
         if (done) {
           break;
@@ -408,6 +409,7 @@ export const runtimeManager = {
         buffer = blocks.pop() || '';
 
         for (const block of blocks) {
+          if (streamDone) break;
           const lines = block
             .split('\n')
             .map((line) => line.trim())
@@ -446,6 +448,10 @@ export const runtimeManager = {
                   report: '',
                 });
               }
+              // done is the terminal event — stop reading
+              streamDone = true;
+              reader.cancel().catch(() => {});
+              break;
             }
           }
         }
