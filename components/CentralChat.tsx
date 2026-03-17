@@ -1015,7 +1015,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
             );
           });
         })()}
-        {isSkipping && (
+        {isSkipping && !isLoading && (
           <div className="flex gap-4">
             <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm">
               <Loader2 size={20} className="animate-spin text-orange-400" />
@@ -1025,7 +1025,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
             </div>
           </div>
         )}
-        {isLoading && !isSkipping && !(messages.length > 0 && messages[messages.length - 1]?.role === 'model' && messages[messages.length - 1]?.text) && (
+        {isLoading && !(messages.length > 0 && messages[messages.length - 1]?.role === 'model' && messages[messages.length - 1]?.text) && (
           <div className="flex gap-4">
             <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm">
               <Loader2 size={20} className="animate-spin text-blue-500" />
