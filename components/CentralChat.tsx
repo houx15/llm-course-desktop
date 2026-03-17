@@ -948,6 +948,18 @@ const CentralChat: React.FC<CentralChatProps> = ({
           const lastMsg = visibleMessages[visibleMessages.length - 1];
           const lastIsBotResponse = lastMsg?.role === 'model' && lastMsg.text.trim() !== '' && !isLoading;
 
+          if (!isLoading && lastMsg) {
+            console.log('[skipBtn debug]', {
+              lastMsgRole: lastMsg.role,
+              lastMsgHasText: lastMsg.text.trim() !== '',
+              lastIsBotResponse,
+              hasRemainingTasks,
+              sessionId: !!sessionId,
+              isSkipping,
+              isLoading,
+            });
+          }
+
           return visibleMessages.map((msg, idx) => {
             const hasCodeBlock = msg.role === 'model' && msg.text.includes('```');
             const isLastBotMsg = lastIsBotResponse && msg.role === 'model' && idx === visibleMessages.length - 1;
