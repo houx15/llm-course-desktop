@@ -702,6 +702,7 @@ const CentralChat: React.FC<CentralChatProps> = ({
       appendToLatestModelMessage(`抱歉，遇到了一些错误，请重试。\n\n${error instanceof Error ? error.message : ''}`);
       return false;
     } finally {
+      console.log('[sendMessage] setting isLoading=false');
       setIsLoading(false);
     }
   };

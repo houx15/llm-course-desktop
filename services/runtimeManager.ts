@@ -449,6 +449,7 @@ export const runtimeManager = {
                 });
               }
               // done is the terminal event — stop reading
+              console.log('[streamMessage] done event received, breaking reader loop');
               streamDone = true;
               reader.cancel().catch(() => {});
               break;
