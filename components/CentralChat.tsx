@@ -601,6 +601,20 @@ const CentralChat: React.FC<CentralChatProps> = ({
       await runtimeManager.streamMessage(sessionId, userMsg.text, (event) => {
         onRuntimeEvent?.(event);
 
+        if (event.type === 'companion_start') {
+          // Reset model response — step 2 CA replaces step 1 on unlock
+          modelResponseText = '';
+          setMessages((prev) => {
+            const next = [...prev];
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].role === 'model') {
+                next[i] = { ...next[i], text: '' };
+                return next;
+              }
+            }
+            return next;
+          });
+        }
         if (event.type === 'companion_chunk') {
           modelResponseText += event.content || '';
           appendToLatestModelMessage(event.content || '');
@@ -1001,7 +1015,17 @@ const CentralChat: React.FC<CentralChatProps> = ({
             );
           });
         })()}
-        {isLoading && !(messages.length > 0 && messages[messages.length - 1]?.role === 'model' && messages[messages.length - 1]?.text) && (
+        {isSkipping && (
+          <div className="flex gap-4">
+            <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm">
+              <Loader2 size={20} className="animate-spin text-orange-400" />
+            </div>
+            <div className="p-4 bg-white border border-gray-100 rounded-2xl rounded-tl-none shadow-sm flex items-center">
+              <span className="text-gray-400 text-sm">跳过中...</span>
+            </div>
+          </div>
+        )}
+        {isLoading && !isSkipping && !(messages.length > 0 && messages[messages.length - 1]?.role === 'model' && messages[messages.length - 1]?.text) && (
           <div className="flex gap-4">
             <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm">
               <Loader2 size={20} className="animate-spin text-blue-500" />
