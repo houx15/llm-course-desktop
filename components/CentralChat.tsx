@@ -341,7 +341,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
       const newSid = created.sessionId;
       setSessionId(newSid);
-      onSessionIdChange?.(newSid);
       // Start with an empty model message; the greeting will stream in
       setMessages([{ role: 'model', text: '' }]);
       setSessionStarted(true);
@@ -362,6 +361,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
         },
       );
       setIsLoading(false);
+      // Notify parent AFTER greeting is done to avoid re-triggering the useEffect
+      onSessionIdChange?.(newSid);
     } catch (createErr) {
       if (cancelled()) return;
       console.warn('[CentralChat] Create session failed:', createErr);
@@ -527,7 +528,6 @@ const CentralChat: React.FC<CentralChatProps> = ({
 
         const newSid = created.sessionId;
         setSessionId(newSid);
-        onSessionIdChange?.(newSid);
         setMessages([{ role: 'model', text: '' }]);
         setSessionStarted(true);
 
@@ -545,6 +545,8 @@ const CentralChat: React.FC<CentralChatProps> = ({
             }
           },
         );
+        // Notify parent AFTER greeting is done to avoid re-triggering the useEffect
+        onSessionIdChange?.(newSid);
       } catch (error) {
         stopProgress();
         throw error;
