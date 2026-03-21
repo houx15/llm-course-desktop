@@ -41,7 +41,7 @@ Optional env vars (overrides in-app settings):
 npm run pack:desktop
 
 # Local build (packaged dmg/exe)
-npm run build:desktop
+npm run build:desktop:build
 ```
 
 macOS builds produce a universal (x64 + arm64) DMG and ZIP. Windows builds produce an x64 NSIS installer.
